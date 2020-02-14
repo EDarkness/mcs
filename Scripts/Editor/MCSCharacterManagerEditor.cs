@@ -558,7 +558,29 @@ namespace MCS.EDITORS
                 }
                 EditorGUILayout.EndHorizontal();
 
+                //show option to toggle updates per frame for this character
+                EditorGUILayout.BeginHorizontal();
+                bool autoUpdate = EditorGUILayout.Toggle("Auto Frame Update", charMan.autoUpdateModel);
+                if (autoUpdate != charMan.autoUpdateModel) {
 
+                    Undo.RecordObject(charMan, "Auto Frame Update");
+                    charMan.autoUpdateModel = autoUpdate;
+                    EditorUtility.SetDirty(charMan);
+
+                }
+                EditorGUILayout.EndHorizontal();
+
+                //show option to toggle updates per frame for this character
+                EditorGUILayout.BeginHorizontal();
+                bool autoLateUpdate = EditorGUILayout.Toggle("Auto Late Frame Update", charMan.autoUpdateModelLate);
+                if (autoLateUpdate != charMan.autoUpdateModelLate) {
+
+                    Undo.RecordObject(charMan, "Auto Late Frame Update");
+                    charMan.autoUpdateModelLate = autoLateUpdate;
+                    EditorUtility.SetDirty(charMan);
+
+                }
+                EditorGUILayout.EndHorizontal();
 
                 //We're not quite ready to support this w/o having documentation about it
                 /*
