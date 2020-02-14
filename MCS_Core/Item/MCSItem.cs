@@ -9,7 +9,7 @@ using MCS.Utility.Serialize;
 
 namespace MCS.Item
 {
-
+    
 	public class MCSItem : MonoBehaviour, IlazyUpdate, IlazyLateUpdate, ISerializable
 	{
 
@@ -18,10 +18,10 @@ namespace MCS.Item
 		public event BeforeLazyLateUpdate OnBeforeLazyLateUpdate;
 		public event AfterLazyLateUpdate OnAfterLazyLateUpdate;
 
-		bool needs_lazy_update = false;
-		bool needs_lazy_late_update = false;
+		//bool needs_lazy_update = false;
+		//bool needs_lazy_late_update = false;
 
-
+        /*
 		public void Update()
 		{
 			if (needs_lazy_update)
@@ -32,6 +32,7 @@ namespace MCS.Item
 				if (OnAfterLazyUpdate != null)
 					OnAfterLazyUpdate();
 			}
+            Debug.Log("Item getting updated...");
 		}
 
 		public void LateUpdate()
@@ -44,8 +45,9 @@ namespace MCS.Item
 				if (OnAfterLazyLateUpdate != null)
 					OnAfterLazyLateUpdate();
 			}
+            
 		}
-
+        */
 		public void SerializeStateToJson()
 		{
 			
@@ -57,4 +59,5 @@ namespace MCS.Item
 		}
 
 	}
+    
 }

@@ -48,13 +48,15 @@ namespace MCS.COSTUMING
 //		JCTTransition jct;
 		
         /// <summary>
-        /// Implementation of MonoBehaviour Update method. Called once per frame.
+        /// Implementation of FrameUpdate method. Called once per frame.  Called by the main character manager
         /// </summary>
-		public override void Update(){
+		public override void FrameUpdate(){
+
+            //Debug.Log("Updating hair...");
 			if (currentVisibility != isVisible) {
 
 				if(feathered == null && opaque == null)
-					base.Update();
+					base.FrameUpdate();
 //				currentVisibility = isVisible;
 				if(cap != null)
 					cap.setVisibility (isVisible);
@@ -72,7 +74,8 @@ namespace MCS.COSTUMING
                 dirty = false;
             }
 
-            base.Update();
+            base.FrameUpdate();
+
 		}
 
 

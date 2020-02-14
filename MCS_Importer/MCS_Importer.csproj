@@ -56,22 +56,16 @@
     </When>
     <Otherwise>
       <ItemGroup>
-        <Reference Include="UnityEngine">
-          <HintPath>..\UnityDlls\5.3\UnityEngine.dll</HintPath>
-        </Reference>
-        <Reference Include="UnityEditor">
-          <HintPath>..\UnityDlls\5.3\UnityEditor.dll</HintPath>
-        </Reference>
       </ItemGroup>
     </Otherwise>
   </Choose>
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="UnityEditor">
-      <HintPath>..\UnityDlls\5.3\UnityEditor.dll</HintPath>
+      <HintPath>..\..\..\..\..\..\..\Applications\Unity\Hub\Editor\2017.4\Unity.app\Contents\Managed\UnityEditor.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine">
-      <HintPath>..\UnityDlls\5.3\UnityEngine.dll</HintPath>
+      <HintPath>..\..\..\..\..\..\..\Applications\Unity\Hub\Editor\2017.4\Unity.app\Contents\Managed\UnityEngine.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>

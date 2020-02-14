@@ -211,14 +211,14 @@ namespace MCS.COSTUMING
 		}
 
 
-
+        /*
 		/// <summary>
 		/// MonoBehaviour Awake event.
 		/// </summary>
 		void Awake()
 		{
 		}
-		
+	    */	
 
 
 		/// <summary>
@@ -237,8 +237,9 @@ namespace MCS.COSTUMING
 		/// <summary>
 		/// MonoBehaviour Update event.
 		/// </summary>
-		void Update ()
+		public void FrameUpdate()
 		{
+            
 			if (layoutNeedsUpdate == true) {
 				if (_layoutObject == null) {
 					PrepEvents ();

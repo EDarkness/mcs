@@ -57,6 +57,8 @@ namespace M3D_DLL
                     }
                 } catch(Exception e)
                 {
+                    Debug.Log("Exception caught while processing schematic.");
+                    Debug.LogException(e);
                 }
 
 

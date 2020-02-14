@@ -343,9 +343,9 @@ namespace MCS.COSTUMING
 		/// <summary>
 		/// MonoBehaviour Update event.
 		/// </summary>
-		public virtual void Update ()
+		public virtual void FrameUpdate()
 		{
-
+            //Debug.Log("Updating costume item...");
             if (isBoundsDirty)
             {
                 RecalculateBounds();
@@ -357,6 +357,7 @@ namespace MCS.COSTUMING
                 UnityEngine.Debug.LogWarning("You should switch your call from OBJ.isVisible = ? to OBJ.SetVisibility(?) to improve performance and prevent race conditions");
                 SetVisibility(isVisible);
             }
+
 		}
 
 
@@ -656,6 +657,7 @@ namespace MCS.COSTUMING
                 SkinnedMeshRenderer smr = cm.GetComponent<SkinnedMeshRenderer>();
                 if(smr != null)
                 {
+                    //Debug.Log("Added: " + smr.name);
                     smrs.Add(smr);
                 }
             }
@@ -669,7 +671,7 @@ namespace MCS.COSTUMING
 		/// Return the <see cref="MESH_TYPE"/> for this CostumeItem.
 		/// </summary>
 		/// <returns>The mesh type.</returns>
-		public MESH_TYPE GetMeshType ()
+		public MESH_TYPE GetMeshType()
 		{
 			return currentCoreMesh.meshType;
 		}
@@ -679,7 +681,7 @@ namespace MCS.COSTUMING
 		/// <summary>
 		/// Internal method. Cleanup this CostumeItem, removing all CoreMesh items from the LODlist.
 		/// </summary>
-		private void Cleanup ()
+		private void Cleanup()
 		{
 			bool keepGoing;
 			do {
@@ -708,7 +710,7 @@ namespace MCS.COSTUMING
         {
             //UnityEngine.Debug.Log("Recalculating: " + gameObject.name);
             List<SkinnedMeshRenderer> smrs = GetSkinnedMeshRenderers();
-
+            //Debug.Log("Should be recalculating these bounds....");
             //nothing to recalc
             if (smrs.Count <= 0)
             {
@@ -736,9 +738,9 @@ namespace MCS.COSTUMING
                 {
                     continue;
                 }
-
+                //Debug.Log("Recalculating: " + smr.name);
                 /*
-                smr.transform.localScale = new Vector3(1f, 1f, 1f);
+                smr.transform.localScale = new Vector3(1f, 1f, 1f)
                 smr.transform.localRotation = Quaternion.identity;
                 smr.transform.localPosition = Vector3.zero;
                 */

@@ -12,7 +12,8 @@ using MCS.SERVICES;
 
 namespace MCS
 {
-	/// <summary>
+	/*
+    /// <summary>
 	/// CharacterManager is a subclass of Unity's MonoBehavior and is automatically attached
     /// to MCS Figures when they are loaded into the scene. Every MCS figure will have its own instance of CharacterManager.
     /// 
@@ -23,91 +24,128 @@ namespace MCS
     ///     CharacterManager m_CharacterManager = GetComponent<CharacterManager>();
     ///     
 	/// </summary>
+    */ 
+    
+
 	[ExecuteInEditMode]
 	public class MCSCharacterManager : MonoBehaviour //, ISerializationCallbackReceiver
 	{
-		/// <summary>
-		/// The version number.
-		/// </summary>
-		public static float Version = 1.7f;
+		
+        //public variables**********
+        //
+		public static float Version = 1.8f;                             //version number variables
         public static int Major = 1;
-        public static int Minor = 6;
-		public static int Revision = 4;
+        public static int Minor = 8;
+		public static int Revision = 1;
+                                                                        //indent marker******
+        public bool autoUpdateModel = true;                             //this flag will set the model to automatically update itself every frame
+                                                                        //and is set to do so when model is created.  Can be changed to manual by
+                                                                        //setting this value to false when created.
 
-        /// <summary>
-        /// A formatted string with the version number of this CharacterManager.
-        /// 
-        /// The format of the is of the form: {Major}.{Minor}.{Revision}
-        /// </summary>
-		public string VersionInfo{
-			get{
+        public bool autoUpdateModelLate = true;                         //this flag will set the model to automatically do the late update for all
+                                                                        //parts related to this character.  Setting this value to false will allow
+                                                                        //for manual frame updating of this entity.
+        
+        public delegate void PreLODChange(float level, SkinnedMeshRenderer activeFigure);
+        public delegate void PostLODChange(float level, SkinnedMeshRenderer activeFigure, bool figureChanged);
+        public Animator anim;                                           //Backing reference to the GameObject (MCS Figure's) Animator component for
+                                                                        //the public GetAnimatorManager method.
+
+        protected Dictionary<string, float> CurrentJCTBlendshapes;      //Dictionary of blendshape names and values that are attached and require 
+                                                                        //JCT service.
+
+        public bool HasClonedMeshes = false;                            //we set this to true if we are using a JCT morph and looped through all our 
+                                                                        //core meshes and duplicated the meshes (we need to do this for JCT morphed
+                                                                        //avatars).  True if there are cloned meshes for the JCT service.
+
+        public JCTTransition jct;                                       //Backing reference to the JCTTransition for the GetJctManager method
+        public delegate void MCSCMBlendshapeValueChange();              //Delegate and event for raising whenever a Blendshape value changes.
+        public event MCSCMBlendshapeValueChange OnCMBlendshapeValueChange;  //Event broadcast whenever a Blendshape value on the figure has changed. 
+                                                                        //Subscribe to this event to find out whenever a Blendshape value has changed.
+
+        internal bool _isAwake = false;                                 //Internal backing refercne for isAwake public property
+        internal CostumeModel _clothingModel;                           //Internal. Our reference to the clothing CostumeModel.
+        internal CostumeModel _propModel;                               //Internal. Our reference to the props CostumeModel.
+        internal CostumeModel _hairModel;                               //Internal. Our reference to the hair CostumeModel.
+        internal List<CIattachmentPoint> attachmentPoints = new List<CIattachmentPoint>();  /// Internal. The List of type CIattachmentPoint, 
+                                                                        //containing all attachment points for this figure.
+        public float currentLODLevel = 1f;                              //The current LOD level expressed as a scalar value.
+        public COSTUME_BOUNDS_UPDATE_FREQUENCY CostumeBoundsUpdateFrequency = COSTUME_BOUNDS_UPDATE_FREQUENCY.NEVER;    /// Determins how frequently, 
+                                                                        //if ever, will we update the bounds of a costume item. Default = NEVER
+
+        public bool ResetBlendshapesOnStart = true;                     //Do we reset morphs on start, if yes, it means all blendshapes on all SMR 
+                                                                        //are zero'd out, this is needed for state serialization when you have 2
+                                                                        //figures using the same fbx with different morphs.  NOTE: this should only 
+                                                                        //be false for 2 reasons, 1: you don't want the performance cost of reseting 
+                                                                        //these (not a high cost though), 2: you have custom blendshapes that aren't 
+                                                                        //managed by MCS
+
+        public bool ForceJawShut = false;                               //if using animations that don't close the mounth, this can be set to force it
+        public delegate void OnPostSetBlendshapeValueAsync();           //Delegate type used as a callback in SetBlendshapeValueAsync
+
+
+        
+        //private variables**********
+        //
+        private CoreMorphs _coreMorphs;                                 //Backing reference for the public coreMorphs property
+        private bool _needsToTriggerPostMorph = false;
+        private AlphaInjectionManager _alphaInjection;                  //Internal. Our AlphaInjectionManager reference. Every figure has it's own 
+                                                                        //AlphaInjectionManager which handles alpha textures to hide items beneath others.
+        private CIbody _figureMesh;                                     //Internal. Our reference to the body mesh for this figure.
+
+        [SerializeField][HideInInspector]
+		private HashSet<string> _blendShapeChanges;                     //Queues to actions on the character.  Internal. HashSet of temporary blendshape 
+                                                                        //changes.
+                                                                        //<remarks>Anyone know why we'd want to serialize temporary change data?</remarks>
+		private Dictionary<string, bool> _clothingChanges;              //Backing reference for the <see cref="clothingChanges"/> property.
+        private CSBoneService _boneService;                             //Internal. Our reference to the CSBoneService component for this figure.
+        private Transform _jawBone;
+        private Dictionary<int, StreamingMorphs.InjectMorphNamesIntoFigureAsyncResult> _queuedInjection = null;
+        private Morph[] _queuedMorphs = null;
+        private OnPostSetBlendshapeValueAsync _queuedOnPostSetBlendshapeValueAsync = null;
+        private bool _initialized = false;
+
+
+        //Event variables
+        public event PreLODChange OnPreLODChange;                       //Fired before SetLODLevel
+        public event PostLODChange OnPostLODChange;                     //Fired after SetLODLevel
+
+        
+        //  A formatted string with the version number of this CharacterManager. 
+        //  The format of the is of the form: {Major}.{Minor}.{Revision}
+		public string VersionInfo {
+
+			get {
 				return string.Format("{0}.{1}.{2}", MCSCharacterManager.Major, MCSCharacterManager.Minor, MCSCharacterManager.Revision);
 			}
+
 		}
 
 
-        public delegate void PreLODChange(float level, SkinnedMeshRenderer activeFigure);
-        public delegate void PostLODChange(float level, SkinnedMeshRenderer activeFigure, bool figureChanged);
-        /// <summary>
-        /// Fired before SetLODLevel
-        /// </summary>
-        public event PreLODChange OnPreLODChange;
-        /// <summary>
-        /// Fired after SetLODLevel
-        /// </summary>
-        public event PostLODChange OnPostLODChange;
-
-        /// <summary>
-        /// Backing reference to the GameObject (MCS Figure's) Animator component for the public
-        /// GetAnimatorManager method.
-        /// </summary>
-		Animator anim;
         /// <summary>
         /// Returns a reference to MCS Figure's Animator Component.
         /// </summary>
-		public Animator GetAnimatorManager(){
+		public Animator GetAnimatorManager() {
+
 			if (anim == null) {
 				anim = gameObject.GetComponent<Animator> ();
 			}
 			return anim;
 		}
 
-        /// <summary>
-        /// Dictionary of blendshape names and values that are attached and require JCT service.
-        /// </summary>
-        protected Dictionary<string, float> CurrentJCTBlendshapes;
-        /// <summary>
-        /// True if there are cloned meshes for the JCT service.
-        /// </summary>
-        public bool HasClonedMeshes = false; //we set this to true if we are using a JCT morph and looped through all our core meshes and duplicated the meshes (we need to do this for JCT morphed avatars)
-
-        /// <summary>
-        /// Backing reference to the JCTTransition for the GetJctManager method
-        /// </summary>
-		JCTTransition jct;
+        
         /// <summary>
         /// Returns a reference to the JCTTransition for this MCS Figure that this CharacterManager is component of.
         /// </summary>
-		public JCTTransition GetJctManager(){
+		public JCTTransition GetJctManager() {
+
 			if (jct == null)
 				jct = gameObject.GetComponentInChildren<JCTTransition> ();
 			return jct;
+
 		}
-
-		// we'll broadcast this in the update loop
-		/// <summary>
-		/// Delegate and event for raising whenever a Blendshape value changes.
-		/// </summary>
-		public delegate void MCSCMBlendshapeValueChange();
-        /// <summary>
-        /// Event broadcast whenever a Blendshape value on the figure has changed.
-        /// 
-        /// Subscribe to this event to find out whenever a Blendshape value has changed.
-        /// </summary>
-		public event MCSCMBlendshapeValueChange OnCMBlendshapeValueChange;
-
-
-
+        
+		
 		/// <summary>
 		/// Internal. Broadcasts the blendshape value change event to all subscribed methods.
 		/// </summary>
@@ -117,25 +155,20 @@ namespace MCS
 				OnCMBlendshapeValueChange ();
 		}
 
-        /// <summary>
-        /// Internal backing refercne for isAwake public property
-        /// </summary>
-        internal bool _isAwake = false;
+        
         /// <summary>
         /// True if the Awake() method has been called by the Unity Engine.
         /// </summary>
-        public bool isAwake
-        {
+        public bool isAwake {
+
             get
             {
                 return _isAwake;
             }
+
         }
 
-        /// <summary>
-        /// Backing reference for the public coreMorphs property
-        /// </summary>
-        private CoreMorphs _coreMorphs;
+        
         /// <summary>
         /// Reference to the CoreMorphs for this CharacterManager
         /// Use coreMorphs to gain access to individual Morphs on the figure.
@@ -158,8 +191,7 @@ namespace MCS
             }
         }
 
-        private bool _needsToTriggerPostMorph = false;
-
+        
         public void OnPostJCT()
         {
             if (_needsToTriggerPostMorph)
@@ -187,14 +219,6 @@ namespace MCS
         }
 
 
-
-		/// <summary>
-		/// Internal. Our reference to the clothing CostumeModel.
-		/// </summary>
-		internal CostumeModel _clothingModel;
-
-
-
 		/// <summary>
 		/// Internal. Accessor and initialiser for the reference to the clothing CostumeModel.
 		/// </summary>
@@ -207,14 +231,6 @@ namespace MCS
 				return _clothingModel;
 			}
 		}
-
-
-
-		/// <summary>
-		/// Internal. Our reference to the props CostumeModel.
-		/// </summary>
-		internal CostumeModel _propModel;
-
 
 
 		/// <summary>
@@ -231,14 +247,6 @@ namespace MCS
 		}
 
 
-
-		/// <summary>
-		/// Internal. Our reference to the hair CostumeModel.
-		/// </summary>
-		internal CostumeModel _hairModel;
-
-
-
 		/// <summary>
 		/// Internal. Accessor and initialiser for the reference to the hair CostumeModel.
 		/// </summary>
@@ -253,7 +261,6 @@ namespace MCS
 		}
 
 
-
 		/// <summary>
 		/// Internal. Our ContentPackModel reference. Every figure has a ContentPackModel, which contains a List of type ContentPack containing all the packs associated with the figure.
 		/// </summary>
@@ -265,28 +272,6 @@ namespace MCS
 				return _contentPackModel;
 			}
 		}
-
-
-
-        /// <summary>
-        /// Internal. The List of type CIattachmentPoint, containing all attachment points for this figure.
-        /// </summary>
-        internal List<CIattachmentPoint> attachmentPoints = new List<CIattachmentPoint>();
-
-
-
-		/// <summary>
-		/// The current LOD level expressed as a scalar value.
-		/// </summary>
-		public float currentLODLevel = 1f;
-
-
-
-		/// <summary>
-		///  Internal. Our AlphaInjectionManager reference. Every figure has it's own AlphaInjectionManager which handles alpha textures to hide items beneath others.
-		/// </summary>
-		private AlphaInjectionManager _alphaInjection;
-
 
 
 		/// <summary>
@@ -317,14 +302,6 @@ namespace MCS
 		}
 
 
-
-		/// <summary>
-		/// Internal. Our reference to the body mesh for this figure.
-		/// </summary>
-		private CIbody _figureMesh;
-
-
-
 		/// <summary>
 		/// Internal. Accessor and initialiser for the reference to the body mesh for this figure.
 		/// </summary>
@@ -339,17 +316,6 @@ namespace MCS
 				return _figureMesh;
 			}
 		}
-
-
-
-		// Queues to actions on the character
-		/// <summary>
-		/// Internal. HashSet of temporary blendshape changes.
-		/// </summary>
-		/// <remarks>Anyone know why we'd want to serialize temporary change data?</remarks>
-		[SerializeField][HideInInspector]
-		private HashSet<string> _blendShapeChanges;
-
 
 
 		/// <summary>
@@ -377,14 +343,6 @@ namespace MCS
 //		}
 
 
-
-		/// <summary>
-		/// Backing reference for the <see cref="clothingChanges"/> property.
-		/// </summary>
-		private Dictionary<string, bool> _clothingChanges;
-
-
-
 		/// <summary>
 		/// Internal. Accessor and initialiser for the dictionary of clothing changes.
 		/// </summary>
@@ -399,26 +357,17 @@ namespace MCS
 		}
 
 
-
 		// Helpers
 		// internal bool IsChangingBlendshapes { get { return (blendShapeChanges != null && blendShapeChanges.Count > 0); } }
 		// internal bool IsChangingClothing { get { return (clothingChanges != null && clothingChanges.Count > 0); } }
-
-
-
-		/// <summary>
-		/// Internal. Our reference to the CSBoneService component for this figure.
-		/// </summary>
-		private CSBoneService _boneService;
-
 
 
 		/// <summary>
 		/// Internal. Accesssor and initialiser for the CSBoneService component reference.
 		/// </summary>
 		/// <value>The bone service.</value>
-		private CSBoneService boneService
-		{
+		private CSBoneService boneService {
+		
 			get {
                 if (_boneService == null)
                 {
@@ -435,29 +384,10 @@ namespace MCS
 			}
 		}
 
-        /// <summary>
-        /// Determins how frequently, if ever, will we update the bounds of a costume item.
-        /// Never by default.
-        /// </summary>
-        public COSTUME_BOUNDS_UPDATE_FREQUENCY CostumeBoundsUpdateFrequency = COSTUME_BOUNDS_UPDATE_FREQUENCY.NEVER;
-
-        /// <summary>
-        /// Do we reset morphs on start, if yes, it means all blendshapes on all SMR are zero'd out, this is needed for state serialization when you have 2 figures using the same fbx with different morphs
-        /// NOTE: this should only be false for 2 reasons, 1: you don't want the performance cost of reseting these (not a high cost though), 2: you have custom blendshapes that aren't managed by MCS
-        /// </summary>
-        public bool ResetBlendshapesOnStart = true;
-
-        /// <summary>
-        /// Should the jaw bone be forced shut, this is useful if you have animations that don't have a jaw bone and the mouth hangs open
-        /// Generally speaking this should be set to false in most cases.
-        /// </summary>
-        public bool ForceJawShut = false;
-
-
+        
 		// for easy testing
 		// InspectorButton("initCharacterManager")] 
 		// public bool reloadCharacter = false;
-
 
 
 		/// <summary>
@@ -466,8 +396,8 @@ namespace MCS
 		void Awake ()
 		{
             _isAwake = true;
-		//	Debug.Log ("pre awake");
 			//initCharacterManager ();//should only get called when pressing play
+
 		}
 
 
@@ -475,8 +405,8 @@ namespace MCS
 		/// <summary>
 		/// MonoBehaviour Start event. Raised on instance startup.
 		/// </summary>
-		void Start()
-		{
+		void Start() {
+		
             if (coreMorphs != null)
             {
                 coreMorphs.OnPostMorph += OnPostMorph;
@@ -510,29 +440,104 @@ namespace MCS
 			//we need to sync regardless if we're in the application or the editor, otherwise the lods and blendshapes get out of sync
 			SyncAllBlendShapes ();
             SyncHairOverlays();
-		}
 
+		}
 
 
         /// <summary>
         /// MonoBehaviour Update event. Listen for Queue events
         /// </summary>
-        void Update ()
-		{
-            ApplyQueuedInjections();
+        void Update () {
+	    
+            //checking for automatic updates
+            //Note: Models only auto update if the autoUpdateModel flag is true.  If you want to control when updates happen, then
+            //      turn off automatic updating and call FrameUpate() manually.
+            if (autoUpdateModel)
+                FrameUpdate();
 
-            // proper checks are included in function so you can call these as much as you want
-            ApplyClothingChanges ();
 		}
+                                                                        //indent marker*****
+        //Method:   FrameUpdate()
+        //Note:     Called every frame to perform every action of this character.  Every update that used to be independent is now
+        //          handled directly by this method.  It'll need to be called for every character in the game if done manually.
+        //          All of the other parts of the model connect to this method to be updated.  The FrameUpdate() of each part can
+        //          be called separately if necessary.
+        public void FrameUpdate() {
 
-        void LateUpdate()
-        {
-            //now that all things have been done, let's do any expensive final event processing
-            alphaInjection.Process();
+            ApplyQueuedInjections();
+            ApplyClothingChanges();                                     //updates clothing information, checks happen in method
+
+            int totPoints = attachmentPoints.Count;                     //get the number of attachment points on this model
+
+            //cycle through all of the attachment points and update them
+            for (int i = 0; i < totPoints; i++) {
+
+                attachmentPoints[i].FrameUpdate();                      //update each attachement point each frame
+
+             }
+
+            totPoints = clothingModel.availableItems.Count;             //get the total number of items on this model
+
+            //cycle through all of the clothing on this model update only what is visible
+            for (int i = 0; i < totPoints; i++) {
+
+                if (clothingModel.availableItems[i].isVisible) {
+                    
+                    clothingModel.availableItems[i].FrameUpdate();      //if it's visible, then we'll update it this frame
+
+                }
+
+            }
+
+            totPoints = hairModel.availableItems.Count;                 //get the total number of hair models on this character
+
+            //cycle through all of the hair models attached to this character, update only what is visible
+            for (int i = 0; i < totPoints; i++) {
+
+                if (hairModel.availableItems[i].isVisible) {
+
+                    hairModel.availableItems[i].FrameUpdate();          //if it's visible, then we'll update the hair for this frame
+
+                }
+
+            }
+
+            totPoints = propModel.availableItems.Count;                 //get the total number of props associated with this model
+
+            //cycle through all of the attached props and update only what is visible
+            for (int i = 0; i < totPoints; i++) {
+
+                if (propModel.availableItems[i].isVisible) {
+
+                    propModel.availableItems[i].FrameUpdate();          //if this prop is visible, then update it for this frame
+
+                }
+
+            }
+
         }
 
 
-        private Transform _jawBone;
+        void LateUpdate()
+        {
+            //checking for automatic updates
+            //Note: Models only auto update if the autoUpdateModelLate flag is true.
+            if (autoUpdateModelLate)
+                FrameLateUpdate();
+
+        }
+
+
+        //Method:   FrameLateUpdate()
+        //Notes:    Just like FrameUpdate(), this method can be called whenever a late update is required.  It will automatically
+        //          update itself when autoUpdateModelLate is true.
+        public void FrameLateUpdate() {
+
+            alphaInjection.Process();                                   //final update of this character, eats a lot of frame time
+            
+        }
+
+
         protected Transform jawBone
         {
             get
@@ -548,9 +553,10 @@ namespace MCS
         /// <summary>
         /// Forces the jaw bone to be shut, fires after animation and jct
         /// </summary>
-        public void ShutJaw()
-        {
+        public void ShutJaw() {
+        
             jawBone.localRotation = Quaternion.identity;
+
         }
 
         //This is the easiest way to close the jaw bone, but requires your animation controller to have the IK pass enabled
@@ -574,7 +580,9 @@ namespace MCS
             coreMorphs.DetachAllMorphs();
             coreMorphs.Resync();
 			SyncMorphsToJCT ();
+
         }
+
 
 		/// <summary>
 		/// Syncs all blendshapes on the figure, clothing and hair.
@@ -587,6 +595,7 @@ namespace MCS
             //TODO: this should be called BroadcastMorphValueChange
 			BroadcastBlendshapeValueChange ();
 		}
+
 
         /// <summary>
         /// Returns an Array of Morph objects who's value is non-zero.
@@ -602,13 +611,15 @@ namespace MCS
 			return morphs.ToArray ();
 		}
 
+
         /// <summary>
         /// Auto attaches and drives a morph from a range of 0-100f where 0 is no morph and 100 is full morph
         /// </summary>
         /// <param name="morphName">The "localName" of a morph, eg: FBMHeavy</param>
         /// <param name="value">The value between 0-100f</param>
         /// <returns>True on success, false on failure</returns>
-		public bool SetBlendshapeValue(string morphName, float value){
+		public bool SetBlendshapeValue(string morphName, float value) {
+
 			Morph[] morphs = new Morph[1];
             morphs[0] = new Morph();
             morphs [0].localName = morphName;
@@ -631,13 +642,10 @@ namespace MCS
                 OnCMBlendshapeValueChange();
             }
             
-
             return true;
 		}
 
-        private Dictionary<int, StreamingMorphs.InjectMorphNamesIntoFigureAsyncResult> _queuedInjection = null;
-        private Morph[] _queuedMorphs = null;
-        private OnPostSetBlendshapeValueAsync _queuedOnPostSetBlendshapeValueAsync = null;
+        
         private void ApplyQueuedInjections()
         {
             if(_queuedInjection == null || _queuedInjection.Count <= 0)
@@ -695,10 +703,7 @@ namespace MCS
             _queuedInjection.Clear();
         }
 
-        /// <summary>
-        /// Delegate type used as a callback in SetBlendshapeValueAsync
-        /// </summary>
-        public delegate void OnPostSetBlendshapeValueAsync();
+        
         /// <summary>
         /// Async method that automatically attaches and drives a morph from a range of 0-100f where 0 is no morph and 100 is full morph
         /// </summary>
@@ -726,6 +731,7 @@ namespace MCS
                 _queuedOnPostSetBlendshapeValueAsync = callback;
             });
         }
+
 
         /// <summary>
         /// Registers morph names and values with the JCT Manager
@@ -758,11 +764,9 @@ namespace MCS
         }
 
 
-
 		/// <summary>
 		/// Inits the character manager. We may use this several times, like in the importer
 		/// </summary>
-        private bool _initialized = false;
 		void initCharacterManager (bool refresh=false)
 		{
             //only initialize once, unless we force it
@@ -809,12 +813,16 @@ namespace MCS
             _initialized = true;
 		}
 
+
         /// <summary>
         /// Finds all SMRs on figure and sets ALL blendshapes to 0, generally this is used to fix serialization issues and nothing more
         /// </summary>
         public void ResetAllBlendshapes()
         {
-            SkinnedMeshRenderer[] smrs = GetComponentsInChildren<SkinnedMeshRenderer>();
+            //Debug.Log("ResetAllBlendshapes() called.");
+            SkinnedMeshRenderer[] smrs = this.GetComponentsInChildren<SkinnedMeshRenderer>();
+            //SkinnedMeshRenderer[] smrs = null;
+            //if (smrs == null) Debug.Break();
             foreach (SkinnedMeshRenderer smr in smrs)
             {
                 int total = smr.sharedMesh.blendShapeCount;
@@ -823,8 +831,8 @@ namespace MCS
                     smr.SetBlendShapeWeight(i, 0f);
                 }
             }
-        }
 
+        }
 
 
 		/// <summary>
@@ -844,7 +852,6 @@ namespace MCS
 		}
 
 
-
 		/// <summary>
 		/// Updates clothing visibility per GUI changes.
 		/// </summary>
@@ -855,6 +862,7 @@ namespace MCS
 
             var enumerator = clothingChanges.GetEnumerator();
             while (enumerator.MoveNext()) {
+
                 string key = enumerator.Current.Key;
 				if (clothingChanges[key]) {
 					clothingModel.SetItemVisibility (key, true);
@@ -869,7 +877,6 @@ namespace MCS
                 clothingChanges.Clear();
             }
 		}
-
 
 
 		/// <summary>
@@ -899,7 +906,6 @@ namespace MCS
 		}
 
 
-
 		/// <summary>
 		/// Detects all CIclothing that are present, visible and
 		/// children of the root Character Manager game object
@@ -908,9 +914,10 @@ namespace MCS
 		/// </summary>
 		public void DetectAttachedClothing ()
 		{
-			CIclothing[] potential_clothing = gameObject.GetComponentsInChildren<CIclothing> (true);
+			CIclothing[] potential_clothing = gameObject.GetComponentsInChildren<CIclothing>(true);
 
 			foreach (CIclothing cloth in potential_clothing) {
+
 				if (cloth.isAttached == false) {
 					AttachCIClothing (cloth, false); // just to makre sure thing are bound
 				}
@@ -919,7 +926,6 @@ namespace MCS
 				cloth.DetectCoreMeshes (); 
 			}
 		}
-
 
 
 		/// <summary>
@@ -972,7 +978,6 @@ namespace MCS
 		}
 
 
-
 		/// <summary>
 		/// Detects CIhair that is present, visible and
 		/// a child of the root character manager game
@@ -991,7 +996,6 @@ namespace MCS
 				hair.DetectCoreMeshes ();
 			}
 		}
-
 
 
 		/// <summary>
@@ -1019,7 +1023,6 @@ namespace MCS
 		}
 
 
-
 		/// <summary>
 		/// Attachs and binds a CIclothing item to the figure. If used in the Editor, the attachment is permanent. If used at runtime, the changes are lost at termination.
 		/// </summary>
@@ -1039,12 +1042,11 @@ namespace MCS
                 new_attached_instance = boneService.AttachCostumeItemToFigure(clothing.gameObject);
             }
 			
-			CIclothing attached_cloth = new_attached_instance.GetComponent<CIclothing> ();
+			CIclothing attached_cloth = new_attached_instance.GetComponent<CIclothing>();
 			attached_cloth.isAttached = true;
 
 			return attached_cloth;
 		}
-
 
 
 		/// <summary>
@@ -1067,7 +1069,6 @@ namespace MCS
 
 			return attached_hair;
 		}
-
 
 
 		/// <summary>
@@ -1101,6 +1102,7 @@ namespace MCS
 
 			return attached_prop;
 		}
+
 
         /// <summary>
         /// Syncs attached CIClothing, CIProps and figure meshes with the
@@ -1144,7 +1146,6 @@ namespace MCS
 		}
 
 
-
 		/// <summary>
 		/// Internal helper function that sets the LOD level
 		/// for all cloned props on attachement points.
@@ -1158,7 +1159,6 @@ namespace MCS
 		}
 
 
-
 		/// <summary>
 		/// Adds the given ContentPack to the ContentPackModel, and loads it onto the figure.
 		/// </summary>
@@ -1170,7 +1170,6 @@ namespace MCS
 			AddContentPackToModel(content_pack);
             LoadContentPackToFigure(content_pack);
 		}
-
 
 
 		/// <summary>
@@ -1189,7 +1188,6 @@ namespace MCS
 		}
 
 
-
 		/// <summary>
 		/// Should be helper method for non-existant RemoveContentPack(). Should be internal or private. Should remove the content pack from the figure. Should also be renamed to the less confusing RemoveContentPackFromContentPackModel()
 		/// </summary>
@@ -1201,6 +1199,7 @@ namespace MCS
 			if (contentPackModel.RemoveContentPack (obj) == true) {
 			}
 		}
+
 
         /// <summary>
         /// Unload and remove ALL content packs from the figure
@@ -1215,6 +1214,7 @@ namespace MCS
                 RemoveContentPack(cp);
             }
         }
+
 
         /// <summary>
         /// Returns true if a content pack is in the available list of the figure
@@ -1233,6 +1233,7 @@ namespace MCS
             return false;
         }
 
+
         /// <summary>
         /// Unload and remove the content pack from the figure
         /// </summary>
@@ -1244,6 +1245,7 @@ namespace MCS
 
             SyncHairOverlays();
         }
+
 
         public void SyncHairOverlays()
         {
@@ -1267,6 +1269,7 @@ namespace MCS
             }
         }
 
+
         public void MarkHairAsDirty()
         {
             CIhair[] hairs = gameObject.GetComponentsInChildren<CIhair>(true);
@@ -1277,7 +1280,6 @@ namespace MCS
         }
 
 
-
 		/// <summary>
 		/// Returns a list of all ContentPacks in the ContentPackModel.
 		/// </summary>
@@ -1286,7 +1288,6 @@ namespace MCS
 		{
 			return contentPackModel.GetAllPacks ();
 		}
-
 
 
 		/// <summary>
@@ -1309,7 +1310,7 @@ namespace MCS
             //attempt to find an identically named object under the character manager
             // if we find it, use that game object as "root"
             // if we do not find it, create one under the character manager and assign root to the new object
-			tempRoot = transform.FindChild (content_pack.RootGameObject.name);
+			tempRoot = transform.Find (content_pack.RootGameObject.name);
             //UnityEngine.Debug.LogError("tempRoot: " + (tempRoot == null ? "null" : "not null"));
 
 			if (tempRoot == null) {
@@ -1352,7 +1353,7 @@ namespace MCS
             //SetLODLevel(currentLODLevel);
 
             SyncMorphsToJCT();
-            alphaInjection.invalidate ();
+            alphaInjection.invalidate();
 
             if (CostumeBoundsUpdateFrequency == COSTUME_BOUNDS_UPDATE_FREQUENCY.ON_ATTACH || CostumeBoundsUpdateFrequency == COSTUME_BOUNDS_UPDATE_FREQUENCY.ON_MORPH) {
                 foreach(GameObject clone in clones)
@@ -1388,6 +1389,7 @@ namespace MCS
 			
 			return root;
 		}
+
 
         /// <summary>
         /// Removes the given Transform from the scene graph and by extension the Figure and destroys the GameObject
@@ -1509,8 +1511,6 @@ namespace MCS
 		}
 
 
-
-
 		/// <summary>
 		/// Adds a given CIclothing to the overall CostumeModel for this figure. If the CIclothing already exists in the CostumeModel, the GameObject returned is
 		/// that of the existant CIclothing.
@@ -1551,7 +1551,6 @@ namespace MCS
 			
 			return clone;
 		}
-
 
 
 		/// <summary>
@@ -1595,6 +1594,7 @@ namespace MCS
 			return clone;
 		}
 
+
         /// <summary>
         /// Removes the hair cap mask texture
         /// </summary>
@@ -1611,6 +1611,8 @@ namespace MCS
                 material.DisableKeyword("_OVERLAY");
             }
         }
+
+
         /// <summary>
         /// Places an overlay with the given texture and color on the figure's head.
         /// Overlay for the head replaces the need for a separate skull cap.
@@ -1633,6 +1635,7 @@ namespace MCS
             }
         }
 
+
         /// <summary>
         /// The SkinnedMeshRenderers of an MCS Figure each have 3 material slots.
         /// 
@@ -1645,6 +1648,8 @@ namespace MCS
             Material headMat = figureMesh.GetActiveMaterialInSlot(MATERIAL_SLOT.HEAD);
             return headMat;
         }
+
+
         /// <summary>
         /// The SkinnedMeshRenderers of an MCS Figure each have 3 material slots.
         /// 
@@ -1657,6 +1662,8 @@ namespace MCS
             Material headMat = figureMesh.GetActiveMaterialInSlot(MATERIAL_SLOT.BODY);
             return headMat;
         }
+
+
         /// <summary>
         /// The SkinnedMeshRenderers of an MCS Figure each have 3 material slots.
         /// 
@@ -1712,7 +1719,6 @@ namespace MCS
 		}
 
 
-
 		/// <summary>
 		/// Returns a specific CIclothing loaded into the manager.
 		/// </summary>
@@ -1757,7 +1763,6 @@ namespace MCS
 		}
 
 
-
 		/// <summary>
 		/// Sets a CIclothing items visibility by name.
 		/// </summary>
@@ -1768,7 +1773,6 @@ namespace MCS
 			CostumeItem ci = clothingModel.SetItemVisibility (id, visibility);
             coreMorphs.Resync(ci.gameObject);
 		}
-
 
 
 		/// <summary>
@@ -1782,7 +1786,6 @@ namespace MCS
 		}
 
 
-
 		/// <summary>
 		/// Returns a list of all CIhair currently
 		/// loaded into the character manager.
@@ -1792,7 +1795,6 @@ namespace MCS
 		{
 			return hairModel.GetAllItems ().Cast<CIhair> ().ToList ();
 		}
-
 
 
 		/// <summary>
@@ -1807,12 +1809,10 @@ namespace MCS
 		}
 
 
-
 //		public CIhair GetFirstVisibleHair ()
 //		{
 //			return (CIhair)hairModel.GetVisibleItems ()[0];
 //		}
-
 
 
 		/// <summary>
@@ -1879,7 +1879,6 @@ namespace MCS
 		}
 
 
-
 		/// <summary>
 		/// Removes a specific prop from all attachment points and
 		/// unloads it from the character manager.
@@ -1897,7 +1896,6 @@ namespace MCS
 		}
 
 
-
 		/// <summary>
 		/// Returns a CIprop item by name, if the item isn't
 		/// loaded into the character manager returns a null.
@@ -1908,7 +1906,6 @@ namespace MCS
 		{
 			return (CIprop)propModel.GetItemByName (name);
 		}
-
 
 
 		/// <summary>
@@ -1929,7 +1926,6 @@ namespace MCS
 		}
 
 
-
 		/// <summary>
 		/// If passed a game object this method adds and 
 		/// registers an attachment point.  In order for this
@@ -1942,7 +1938,6 @@ namespace MCS
 		{
 			return target.AddComponent<CIattachmentPoint>();
 		}
-
 
 
 		/// <summary>
@@ -1975,7 +1970,6 @@ namespace MCS
 		}
 
 
-
 		/// <summary>
 		/// Removes a specific attachment point, by name,
 		/// from the character manager.  All props attached
@@ -2001,7 +1995,6 @@ namespace MCS
 		}
 
 
-
 		/// <summary>
 		/// Returns an array of all CIattachmentPoints on
 		/// a given character manager.
@@ -2012,7 +2005,6 @@ namespace MCS
 			DetectAttachmentPoints ();
 			return attachmentPoints.ToArray ();
 		}
-
 
 
 		/// <summary>
@@ -2029,7 +2021,6 @@ namespace MCS
 			}
 			return null;
 		}
-
 
 
 		/// <summary>
@@ -2052,7 +2043,6 @@ namespace MCS
 		}
 
 
-
 		/// <summary>
 		/// Removes CIprop, by name, from a specific attachment point, also by name.
 		/// </summary>
@@ -2070,7 +2060,6 @@ namespace MCS
 			
 			point.RemoveProp (prop, true);
 		}
-
 
 
 		/// <summary>
@@ -2096,6 +2085,7 @@ namespace MCS
 			return boneService.getAllBonesNames ();
 		}
         
+
         /// <summary>
         /// Empties the MaterialBuffer in the AlphaInjectionManager
         /// </summary>
@@ -2108,6 +2098,8 @@ namespace MCS
         {
             alphaInjection.ClearMaterialBuffers(fetch);
         }
+
+
         /*
         public void ClearAlphaInjectionCloneMaterials()
         {
@@ -2118,6 +2110,8 @@ namespace MCS
             alphaInjection.RestoreMaterials();
         }
         */
+
+
         /// <summary>
         /// Marks the current AlphaInjectionManager as dirty so that it will be 
         /// re-rendered the next time it is processed.
@@ -2126,6 +2120,7 @@ namespace MCS
         {
             alphaInjection.invalidate();
         }
+
 
         /// <summary>
         /// Called by the Unity Engine when the GameObject is destroyed.
@@ -2146,6 +2141,7 @@ namespace MCS
             }
         }
 
+
         /// <summary>
         /// Attempts to find items that are on the figure that should not be and will remove them
         /// </summary>
@@ -2153,6 +2149,7 @@ namespace MCS
         {
             contentPackModel.RemoveRogueContent(gameObject);
         }
+
 
         /// <summary>
         /// Forces an update on the current bounding boxes for SkinnedMeshRenderers.

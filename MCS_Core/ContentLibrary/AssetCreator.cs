@@ -84,13 +84,15 @@ namespace M3D_DLL
 				cm.ID = schematic.origin_and_description.mcs_id;
 				cm.meshType = cmmd.meshType;
 				int index = -1;
+
 				for (int i = 0; i < schematic.structure_and_physics.morph_structure.lodMorphObjectNames.Length; i++) {
 					if (schematic.structure_and_physics.morph_structure.lodMorphObjectNames [i] == cm.gameObject.name) {
 						index = i;
 					}
 				}
+
 				if (index > -1) {
-					cm.runtimeMorphPath = schematic.structure_and_physics.morph_structure.lodMorphLocations [index];
+					cm.runtimeMorphPath = schematic.structure_and_physics.morph_structure.lodMorphLocations[index];
 				}
 
 			}
@@ -98,12 +100,12 @@ namespace M3D_DLL
 			//Adding the different CICostumeItem classes, ie. CIClothing, CIBody, CIHair, CIProp.
 			switch (cmmd.meshType) {
 			case MCS.CONSTANTS.MESH_TYPE.CLOTH:
-				child2.AddComponent <CIclothing> ();
-				CIclothing cicl = child2.GetComponent <CIclothing> ();
+				child2.AddComponent<CIclothing>();
+				CIclothing cicl = child2.GetComponent<CIclothing>();
 				cicl.dazName = schematic.origin_and_description.name;
 				cicl.ID = schematic.origin_and_description.mcs_id;
 				cicl.meshType = cmmd.meshType;
-				cicl.DetectCoreMeshes ();
+				cicl.DetectCoreMeshes();
                 //TODO: textures is a list of textures, not a dictionary, right?
                 /*
 				if (textures.ContainsKey ("alphaMask")) {
@@ -115,25 +117,25 @@ namespace M3D_DLL
 			case MCS.CONSTANTS.MESH_TYPE.BODY:
 				//todo: all the figure stuff needs to be added here, ie. CharacterManager, Core Morphs, JCT stuff, etc
 
-				child2.AddComponent <CIbody>();
-				CIbody body = child2.GetComponent <CIbody> ();
+				child2.AddComponent<CIbody>();
+				CIbody body = child2.GetComponent<CIbody>();
 
 				break;
 			case MCS.CONSTANTS.MESH_TYPE.HAIR:
-				child2.AddComponent <CIhair> ();
-				CIhair hair = child2.GetComponent <CIhair> ();
+				child2.AddComponent<CIhair>();
+				CIhair hair = child2.GetComponent<CIhair>();
 				hair.dazName = schematic.origin_and_description.name;
 				hair.ID = schematic.origin_and_description.mcs_id;
 				hair.meshType = cmmd.meshType;
-				hair.DetectCoreMeshes ();
+				hair.DetectCoreMeshes();
 				break;
 			case MCS.CONSTANTS.MESH_TYPE.PROP:
-				child2.AddComponent <CIprop> ();
-				CIprop prop = child2.GetComponent <CIprop> ();
+				child2.AddComponent<CIprop>();
+				CIprop prop = child2.GetComponent<CIprop>();
 				prop.dazName = schematic.origin_and_description.name;
 				prop.ID = schematic.origin_and_description.mcs_id;
 				prop.meshType = cmmd.meshType;
-				prop.DetectCoreMeshes ();
+				prop.DetectCoreMeshes();
 				prop.basePosition = prop.transform.localPosition;
 				prop.baseRotation = prop.transform.localEulerAngles;
 

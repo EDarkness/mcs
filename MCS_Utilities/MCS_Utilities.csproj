@@ -40,10 +40,13 @@
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
     <Reference Include="UnityEngine">
-      <HintPath>..\UnityDlls\5.3\UnityEngine.dll</HintPath>
+      <HintPath>..\..\..\..\..\..\..\Applications\Unity\Hub\Editor\2017.4\Unity.app\Contents\Managed\UnityEngine.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEditor">
+      <HintPath>..\..\..\..\..\..\..\Applications\Unity\Hub\Editor\2017.4\Unity.app\Contents\Managed\UnityEditor.dll</HintPath>
     </Reference>
     <Reference Include="ICSharpCode.SharpZipLib">
-      <HintPath>..\UnityDlls\ICSharpCode.SharpZipLib.dll</HintPath>
+      <HintPath>..\..\..\..\OMC_Morph3D\Assets\MCS\Code\Plugins\ICSharpCode.SharpZipLib.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>

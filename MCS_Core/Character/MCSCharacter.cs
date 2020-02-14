@@ -9,7 +9,7 @@ using MCS.Utility.Serialize;
 
 namespace MCS.Character
 {
-
+    /*
 	public class MCSCharacter : MonoBehaviour, IlazyUpdate, IlazyLateUpdate, ISerializable
 	{
 
@@ -57,4 +57,5 @@ namespace MCS.Character
 		}
 
 	}
+    */
 }

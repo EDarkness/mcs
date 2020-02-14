@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Runtime.Serialization;
 using System.Text;
 using UnityEngine;
+using MCS_Utilities.Morph;
 
 namespace MCS.FOUNDATIONS
 {
@@ -50,6 +51,7 @@ namespace MCS_Utilities.MorphExtraction.Structs
         public string[] names;
     }
 
+    
     //This is a direct representation of a blendshape, this is pre formatting it for disk
     public struct BlendshapeState
     {
@@ -60,16 +62,16 @@ namespace MCS_Utilities.MorphExtraction.Structs
         public Vector3[] deltaNormals;
         public Vector3[] deltaTangents;
 
-        /*
-        public static implicit operator BlendshapeState(byte[] bytes)
-        {
-            UnityEngine.Debug.Log("Implicit conversion from bytes: " + bytes.Length);
-            BlendshapeState bs = new BlendshapeState();
-            bs.name = "Unpacked";
-
-            return bs;
-        }
-        */
+        
+        //public static implicit operator BlendshapeState(byte[] bytes)
+        //{
+        //    UnityEngine.Debug.Log("Implicit conversion from bytes: " + bytes.Length);
+        //    BlendshapeState bs = new BlendshapeState();
+        //    bs.name = "Unpacked";
+        //
+        //    return bs;
+        //}
+        
 
         public static explicit operator BlendshapeState(byte[] bytes)
         {
@@ -80,6 +82,7 @@ namespace MCS_Utilities.MorphExtraction.Structs
             return bs;
         }
     }
+        
 
     //This is used just for storing and loading from the filesystem, this is the internal morph data structure 
     [System.Serializable]
@@ -207,7 +210,8 @@ namespace MCS_Utilities.MorphExtraction.Structs
             return new Vector3(x, y, z);
         }
     }
-
+    
+    
     //This is our human readable morph format, not for serialization directly
     [System.Obsolete("Please switch to MCS_Utilities.Morph.MorphData")]
     [System.Serializable]
@@ -218,6 +222,7 @@ namespace MCS_Utilities.MorphExtraction.Structs
         public BlendshapeState blendshapeState;
         public JCTData jctData;
     }
+    
 
     //This is our final stored state of a morph (which encapsulates both blendshapes and jcts currently)
     [System.Serializable]
@@ -226,6 +231,7 @@ namespace MCS_Utilities.MorphExtraction.Structs
         public string name;
         public BlendshapeStateCereal blendshapeStateCereal;
         public JCTDataCereal jctDataCereal;
+        //public MorphData morphData;
 
         public void Fill(MorphData morphData)
         {
