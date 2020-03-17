@@ -95,6 +95,11 @@ public class JCTTransition : MonoBehaviour
 	private MCSCharacterManager charman;
 
     /// <summary>
+    /// Set if the JCT morphs have been updated in Unity 2018.4 and newer
+    /// </summary>
+    public bool jctUpdateFlag = false;
+
+    /// <summary>
     /// Internal cache lookup
     /// </summary>
     private Dictionary<string, int> _meshRenderBoneDict;
@@ -892,6 +897,18 @@ public class JCTMorph
 	public Vector3[]     m_nodes;
 	public Vector3[]     m_offsets;
 	public Texture2D     m_image;
+}
+
+[System.Serializable]
+public struct JCTMorphTrans {
+
+    public string m_name;
+    public float m_value;
+    public float m_target;
+    public Vector3[] m_nodes;
+    public Vector3[] m_offsets;
+    public string m_image_loc;
+
 }
 
 

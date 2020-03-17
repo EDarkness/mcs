@@ -59,7 +59,6 @@ namespace MCS.FOUNDATIONS
 		/// Costuming Item sets this value and uses it to sort by lod level.
 		/// </summary>
 		public float meshQuality;
-			
 
 
 		/// <summary>

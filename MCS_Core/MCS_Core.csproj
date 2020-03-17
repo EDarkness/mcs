@@ -59,12 +59,13 @@
   <ItemGroup>
     <Reference Include="System">
     </Reference>
-    <Reference Include="UnityEngine">
-      <HintPath>..\..\..\..\..\..\..\Applications\Unity\Hub\Editor\2017.4\Unity.app\Contents\Managed\UnityEngine.dll</HintPath>
-    </Reference>
     <Reference Include="UnityEditor">
       <HintPath>..\..\..\..\..\..\..\Applications\Unity\Hub\Editor\2017.4\Unity.app\Contents\Managed\UnityEditor.dll</HintPath>
     </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>..\..\..\..\..\..\..\Applications\Unity\Hub\Editor\2017.4\Unity.app\Contents\Managed\UnityEngine.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="ICSharpCode.SharpZipLib">

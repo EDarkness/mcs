@@ -1,14 +1,21 @@
 using UnityEngine;
 using System;
-using System.Collections;
+//using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+//using System.Xml;
+using System.Xml.Serialization;
+//using System.Text;
+using System.IO;
+using UnityEditor;
+
 
 using MCS.CONSTANTS;
 using MCS.FOUNDATIONS;
 using MCS.COSTUMING;
 using MCS.CORESERVICES;
 using MCS.SERVICES;
+using MCS_Utilities.Morph;
 
 namespace MCS
 {
@@ -33,9 +40,9 @@ namespace MCS
 		
         //public variables**********
         //
-		public static float Version = 1.8f;                             //version number variables
+		public static float Version = 1.9f;                             //version number variables
         public static int Major = 1;
-        public static int Minor = 8;
+        public static int Minor = 9;
 		public static int Revision = 1;
                                                                         //indent marker******
         public bool autoUpdateModel = true;                             //this flag will set the model to automatically update itself every frame
@@ -82,7 +89,12 @@ namespace MCS
 
         public bool ForceJawShut = false;                               //if using animations that don't close the mounth, this can be set to force it
         public delegate void OnPostSetBlendshapeValueAsync();           //Delegate type used as a callback in SetBlendshapeValueAsync
-
+        public bool testBool = false;
+        public bool saDone = false;                                     //flag for letting the body know that we've already done the streaming assets update for this model
+        public String streamBase = "/StreamingAssets/";                 //base streaming assets location
+        public String sDataLoc = "MCSFemale/MCSFemale/MCSFemale_LOD0";  //location of streaming data for this mesh (starts with female model)
+        public CostumeItem costume;                                     //used for storing costume export information
+        //public String saveLoc;                                          //save/load location used by the editor
 
         
         //private variables**********
@@ -104,6 +116,7 @@ namespace MCS
         private Morph[] _queuedMorphs = null;
         private OnPostSetBlendshapeValueAsync _queuedOnPostSetBlendshapeValueAsync = null;
         private bool _initialized = false;
+        private bool defaults_init = false;                             //did we set up the defaults to be added to the SMR (only need to do this once)
 
 
         //Event variables
@@ -421,7 +434,7 @@ namespace MCS
             {
                 jct.OnPostJCT += OnPostJCT;
             }
-
+                                                                        //indent marker
 		//	Debug.Log ("pre init");
 			CoreMesh[] all_clothing = GetComponentsInChildren<CoreMesh>(true);
 			if(all_clothing != null){
@@ -435,10 +448,10 @@ namespace MCS
 			}
             CurrentJCTBlendshapes = new Dictionary<string, float>();
 
-            initCharacterManager(true);//should only get called when pressing play
-
+            initCharacterManager(true);                                 //should only get called when pressing play
+            
 			//we need to sync regardless if we're in the application or the editor, otherwise the lods and blendshapes get out of sync
-			SyncAllBlendShapes ();
+			SyncAllBlendShapes();
             SyncHairOverlays();
 
 		}
@@ -590,10 +603,10 @@ namespace MCS
 		public void SyncAllBlendShapes ()
 		{
             coreMorphs.Resync();
-			SyncMorphsToJCT ();
+			SyncMorphsToJCT();
 
             //TODO: this should be called BroadcastMorphValueChange
-			BroadcastBlendshapeValueChange ();
+			BroadcastBlendshapeValueChange();
 		}
 
 
@@ -601,7 +614,7 @@ namespace MCS
         /// Returns an Array of Morph objects who's value is non-zero.
         /// </summary>
 		public Morph[] GetActiveBlendShapes(){
-			List<Morph> morphs = new List<Morph> ();
+			List<Morph> morphs = new List<Morph>();
 			foreach (Morph morph in coreMorphs.morphStateGroups["Attached"]) {
 				if (morph.value > 0f) {
 					morphs.Add (morph);
@@ -625,16 +638,16 @@ namespace MCS
             morphs [0].localName = morphName;
 			morphs [0].value = value;
 
-			if (!coreMorphs.morphLookup.ContainsKey (morphName)) {
+			if (!coreMorphs.morphLookup.ContainsKey(morphName)) {
 				return false;
 			}
 
             //tell coreMorphs that we need to attach a new morph
-			coreMorphs.AttachMorphs (morphs);
+			coreMorphs.AttachMorphs(morphs);
             //sync these values to the meshes (as in, drive the real blendshapes)
-			coreMorphs.SyncMorphValues (morphs);
+			coreMorphs.SyncMorphValues(morphs);
             //sync values with our jct bone handler
-			SyncMorphsToJCT (morphs);
+			SyncMorphsToJCT(morphs);
 
             //our values changed, raise the event that tells other services we changed too
             if(OnCMBlendshapeValueChange != null)
@@ -644,6 +657,44 @@ namespace MCS
             
             return true;
 		}
+                                                                        //indent marker
+        /// <summary>
+        ///NOTE:    When a MCS model is first inserted into a scene, the morphs are not added
+        ///         to the Skinned Mesh Rendere.  This is done whenever the morph is actually
+        ///         adjusted or clicked on in the inspector.  What this means is access to
+        ///         facial morphs through the Skinned Mesh Renderer isn't possible until it is
+        ///         actually activated.  This function will activate all facial morphs (and
+        ///         any other morphs needed by other methods) so that they end up on the
+        ///         Skinned Mesh Renderer blendshape list.  At the moment, this includes all
+        ///         facial morphs.
+        ///
+        /// </summary>
+        public void SetDefaultBlendshapes() {
+
+            //SkinnedMeshRenderer smr = gameObject.GetComponentInChildren<SkinnedMeshRenderer>();  //get the skinned mesh renderer for this object
+            
+            //if we've already setup the defaults, no reason to do it again
+            if (defaults_init)
+                return;
+
+            //need to go over all of the morphs available
+            for (int i = 0; i < coreMorphs.morphs.Count; i++) {
+
+                //check to see if this morph is part of Emotion Control
+                if (coreMorphs.morphs[i].localName.Contains("eCTRL")) {
+
+                    //to avoid redundency, lets check to see if those blendshapes are there already
+                    //we don't want to mess with the values that are already there
+                    if (!coreMorphs.morphs[i].attached)
+                        SetBlendshapeValue(coreMorphs.morphs[i].localName, 0);  //just need to add this to the list.
+                    
+                }
+
+            }
+
+            defaults_init = true;                                       //we've done it, so no need to do it again
+
+        }
 
         
         private void ApplyQueuedInjections()
@@ -723,7 +774,7 @@ namespace MCS
 			}
 
             //tell coreMorphs that we need to attach a new morph
-			coreMorphs.AttachMorphs (morphs,false,true,(Dictionary<int, StreamingMorphs.InjectMorphNamesIntoFigureAsyncResult> result) => {
+			coreMorphs.AttachMorphs(morphs,false,true,(Dictionary<int, StreamingMorphs.InjectMorphNamesIntoFigureAsyncResult> result) => {
                 //UnityEngine.Debug.Log("Attached complete");
 
                 _queuedMorphs = morphs;
@@ -777,7 +828,7 @@ namespace MCS
 			//Debug.Log("INTING CHAR MAN: " + gameObject.name);
 
             if (Application.isPlaying)
-				_clothingModel = new CostumeModel (false); //we'll repopulate it in the detect section below
+				_clothingModel = new CostumeModel(false); //we'll repopulate it in the detect section below
 
 			// if (propModel == null) 
 			// 		propModel = new CostumeModel (this);
@@ -786,12 +837,12 @@ namespace MCS
 			// 		hairModel = new CostumeModel (true);
 
 			// detect various costuming items that might be available - connected means its in the stack but bones may not be attached
-			DetectAttachedHair ();
-			DetectAttachedProps ();
-			DetectAttachmentPoints (); //make sure all props are available before we go activating attachmentpoints
+			DetectAttachedHair();
+			DetectAttachedProps();
+			DetectAttachmentPoints(); //make sure all props are available before we go activating attachmentpoints
 
 			// ReloadClothingFromFigure ();
-			DetectAttachedClothing ();
+			DetectAttachedClothing();
 
             //we want to make sure our lod level is set before AI otherwise if we restore from a prefab we'll pick the wrong mats to recover
             SyncCurrentLODLevel();
@@ -839,14 +890,14 @@ namespace MCS
 		/// Reset everything on the character manager (not bundles)
 		/// </summary>
 		[ContextMenu ("Reset Everything")]
-		void ResetModel ()
+		void ResetModel()
 		{
             _coreMorphs = null;
 			_clothingModel = new CostumeModel (false);
 			_propModel = new CostumeModel (this);
 			_hairModel = new CostumeModel (true);
 			attachmentPoints = new List<CIattachmentPoint> ();
-			DetectAttachmentPoints ();
+			DetectAttachmentPoints();
 			
 			_clothingChanges = new Dictionary<string, bool> ();
 		}
@@ -856,7 +907,7 @@ namespace MCS
 		/// Updates clothing visibility per GUI changes.
 		/// </summary>
 		/// <remarks>IAN: Does this need to be public?</remarks>
-		internal void ApplyClothingChanges ()
+		internal void ApplyClothingChanges()
 		{
 			bool needed_update = (clothingChanges.Count > 0) ? true : false;
 
@@ -884,7 +935,7 @@ namespace MCS
 		/// and children of specific bones on the main
 		/// skeleton of the figure.
 		/// </summary>
-		public void DetectAttachmentPoints ()
+		public void DetectAttachmentPoints()
 		{
 			// ensure we have an initialised list of attachment points
 			if (attachmentPoints == null) {
@@ -912,7 +963,7 @@ namespace MCS
 		/// When unattached clothing is found it is attached
 		/// and registerd with the character manager.
 		/// </summary>
-		public void DetectAttachedClothing ()
+		public void DetectAttachedClothing()
 		{
 			CIclothing[] potential_clothing = gameObject.GetComponentsInChildren<CIclothing>(true);
 
@@ -934,7 +985,7 @@ namespace MCS
 		/// detected the props are registered with the
 		/// character manager.
 		/// </summary>
-		public void DetectAttachedProps ()
+		public void DetectAttachedProps()
 		{
 			// if (propModel == null)
 			// 		propModel = new CostumeModel();
@@ -984,7 +1035,7 @@ namespace MCS
 		/// object. When detected the CIhair will be
 		/// registered with the character manager.
 		/// </summary>
-		public void DetectAttachedHair ()
+		public void DetectAttachedHair()
 		{
 			CIhair[] potential_hair = gameObject.GetComponentsInChildren<CIhair> (true);
 
@@ -1004,7 +1055,7 @@ namespace MCS
 		/// If said object doesn't exist, it is instantiated and returned.
 		/// </summary>
 		/// <returns>"AvailableProps" null game object.</returns>
-		private GameObject GetOrCreateAvailablePropsNullObject ()
+		private GameObject GetOrCreateAvailablePropsNullObject()
 		{
 			// lets put unused props in a particular place
 			Transform prop_holder_t = gameObject.transform.Find ("AvailableProps");
@@ -1029,7 +1080,7 @@ namespace MCS
 		/// <returns>The CIclothing added. Original or clone as defined with the boolean flag clone_item.</returns>
 		/// <param name="clothing">Clothing.</param>
 		/// <param name="clone_item">If set to <c>true</c> the CIclothing is cloned.</param>
-		public CIclothing AttachCIClothing (CIclothing clothing, bool clone_item)
+		public CIclothing AttachCIClothing(CIclothing clothing, bool clone_item)
 		{
 			GameObject new_attached_instance = null;
 
@@ -1055,7 +1106,7 @@ namespace MCS
 		/// <returns>The CIhair added. Original or clone as defined with the boolean flag clone_item.</returns>
 		/// <param name="hair">The CIhair item to add.</param>
 		/// <param name="clone_item">If set to <c>true</c> the CIhair is cloned.</param>
-		public CIhair AttachCIHair (CIhair hair, bool clone_item)
+		public CIhair AttachCIHair(CIhair hair, bool clone_item)
 		{
 			GameObject new_attached_instance = null;
 
@@ -1078,7 +1129,7 @@ namespace MCS
 		/// <returns>The CIprop added. Original or clone as defined with the boolean flag clone_item.</returns>
 		/// <param name="prop">The CIprop to add.</param>
 		/// <param name="clone_item">If set to <c>true</c> the CIprop is cloned.</param>
-		public CIprop AttachCIProp (CIprop prop, bool clone_item)
+		public CIprop AttachCIProp(CIprop prop, bool clone_item)
 		{
 			CIprop attached_prop = prop;
 			GameObject new_attached_instance = prop.gameObject;
@@ -1166,6 +1217,12 @@ namespace MCS
 		/// <remarks>THIS IS CONFUSING AND NEEDS TO BE ADDRESSED. There is no RemoveContentPack() function call.</remarks>
 		public void AddContentPack(ContentPack content_pack)
 		{
+            //first thing we do is see if we're using 2018.4 or higher
+            //#if UNITY_2018_4_OR_NEWER
+
+            
+            //#endif
+
 			// add the content pack to the content pack model
 			AddContentPackToModel(content_pack);
             LoadContentPackToFigure(content_pack);
@@ -1182,7 +1239,7 @@ namespace MCS
 		public void AddContentPackToModel(ContentPack content_pack)
 		{
 			// the IF statement adds the content to the model
-			if (contentPackModel.AddContentPack (content_pack) == false) {
+			if (contentPackModel.AddContentPack(content_pack) == false) {
 				 Debug.LogWarning("Could not add content pack");
 			}
 		}
@@ -1295,7 +1352,7 @@ namespace MCS
 		/// </summary>
 		/// <returns>The root of the ContentPack as a GameObject</returns>
 		/// <param name="content_pack">The ContentPack to load.</param>
-		public GameObject LoadContentPackToFigure (ContentPack content_pack)
+		public GameObject LoadContentPackToFigure(ContentPack content_pack)
 		{
 			GameObject root;
 			Transform tempRoot;
@@ -1324,6 +1381,14 @@ namespace MCS
             List<GameObject> clones = new List<GameObject>();
 
 			foreach (CIclothing cloth in content_pack.availableClothing) {
+
+        #if UNITY_2018_4_OR_NEWER
+
+                if (!Application.isPlaying)
+                    ConvertVertexData(cloth.LODlist);
+
+        #endif
+
 				GameObject cloth_clone = LoadClothingFromContentPackToFigure (cloth);
 
                 if (boneService.IsBodyObject (cloth_clone.transform.parent.gameObject))
@@ -1334,6 +1399,14 @@ namespace MCS
             }
 			
 			foreach (CIhair hair in content_pack.availableHair) {
+
+        #if UNITY_2018_4_OR_NEWER
+
+                if (!Application.isPlaying)
+                    ConvertVertexData(hair.LODlist);
+
+        #endif
+
 				GameObject hair_clone = LoadHairFromContentPackToFigure (hair);
 			
 				if (boneService.IsBodyObject(hair_clone.transform.parent.gameObject))
@@ -1559,7 +1632,7 @@ namespace MCS
 		/// </summary>
 		/// <returns>The property from content pack to figure.</returns>
 		/// <param name="prop">The CIhair to add.</param>
-		public GameObject LoadHairFromContentPackToFigure (CIhair hair)
+		public GameObject LoadHairFromContentPackToFigure(CIhair hair)
 		{
 			GameObject clone = null;
 			bool has_dupe = false;
@@ -1684,7 +1757,7 @@ namespace MCS
 		/// </summary>
 		/// <returns>The property from content pack to figure.</returns>
 		/// <param name="prop">The CIprop to add.</param>
-		public GameObject LoadPropFromContentPackToFigure (CIprop prop)
+		public GameObject LoadPropFromContentPackToFigure(CIprop prop)
 		{
 			GameObject clone = null;
 			bool has_dupe = false;
@@ -1712,7 +1785,7 @@ namespace MCS
 		/// Returns a list of all CIclothings loaded into the character manager.
 		/// </summary>
 		/// <returns>The all loaded clothing items.</returns>
-		public List<CIclothing> GetAllClothing ()
+		public List<CIclothing> GetAllClothing()
 		{
 			// Debug.Log(clothingModel);
 			return clothingModel.GetAllItems ().Cast<CIclothing> ().ToList ();
@@ -1757,7 +1830,7 @@ namespace MCS
 		/// that are visible.
 		/// </summary>
 		/// <returns>The visible clothing.</returns>
-		public List<CIclothing> GetVisibleClothing ()
+		public List<CIclothing> GetVisibleClothing()
 		{
 			return clothingModel.GetVisibleItems ().Cast<CIclothing> ().ToList();
 		}
@@ -1768,7 +1841,7 @@ namespace MCS
 		/// </summary>
 		/// <param name="name">Name.</param>
 		/// <param name="visibility">If set to <c>true</c> visibility.</param>
-		public void SetClothingVisibility (string id, bool visibility)
+		public void SetClothingVisibility(string id, bool visibility)
 		{
 			CostumeItem ci = clothingModel.SetItemVisibility (id, visibility);
             coreMorphs.Resync(ci.gameObject);
@@ -1779,7 +1852,7 @@ namespace MCS
 		/// Using DetectAttachedHair(), reloads CIhair
 		/// that are currently visible.
 		/// </summary>
-		public void ReloadHairFromFigure ()
+		public void ReloadHairFromFigure()
 		{
 			hairModel.ClearItems ();
 			DetectAttachedHair ();
@@ -1791,9 +1864,9 @@ namespace MCS
 		/// loaded into the character manager.
 		/// </summary>
 		/// <returns>The all hair items.</returns>
-		public List<CIhair> GetAllHair ()
+		public List<CIhair> GetAllHair()
 		{
-			return hairModel.GetAllItems ().Cast<CIhair> ().ToList ();
+			return hairModel.GetAllItems().Cast<CIhair>().ToList();
 		}
 
 
@@ -1803,7 +1876,7 @@ namespace MCS
 		/// </summary>
 		/// <returns>The hair item by name.</returns>
 		/// <param name="name">Name.</param>
-		public CIhair GetHairByID (string hair_id)
+		public CIhair GetHairByID(string hair_id)
 		{
 			return (CIhair)hairModel.GetItemByName (hair_id);
 		}
@@ -1820,9 +1893,9 @@ namespace MCS
 		/// set to visible.
 		/// </summary>
 		/// <returns>The all visible hair.</returns>
-		public List<CIhair> GetVisibleHair ()
+		public List<CIhair> GetVisibleHair()
 		{
-			return hairModel.GetVisibleItems ().Cast<CIhair> ().ToList ();
+			return hairModel.GetVisibleItems().Cast<CIhair>().ToList();
 		}
 
 
@@ -1870,10 +1943,10 @@ namespace MCS
 		/// this list (use GetAllAttachedProps() instead).
 		/// </summary>
 		/// <returns>The all loaded properties.</returns>
-		public List<CIprop> GetAllLoadedProps ()
+		public List<CIprop> GetAllLoadedProps()
 		{
 			if (propModel.GetAllItems().Count > 0) {
-				return propModel.GetAllItems ().Cast<CIprop>().ToList ();
+				return propModel.GetAllItems().Cast<CIprop>().ToList();
 			}
 			return null;
 		}
@@ -1892,7 +1965,7 @@ namespace MCS
 					DetachPropFromAttachmentPoint(prop.ID, ap.attachmentPointName);
 
 			}
-			propModel.RemoveItem (prop);
+			propModel.RemoveItem(prop);
 		}
 
 
@@ -1902,9 +1975,9 @@ namespace MCS
 		/// </summary>
 		/// <returns>The loaded property by name.</returns>
 		/// <param name="name">Name.</param>
-		public CIprop GetLoadedPropByName (string name)
+		public CIprop GetLoadedPropByName(string name)
 		{
-			return (CIprop)propModel.GetItemByName (name);
+			return (CIprop)propModel.GetItemByName(name);
 		}
 
 
@@ -1934,7 +2007,7 @@ namespace MCS
 		/// </summary>
 		/// <returns>The attachment point from game object.</returns>
 		/// <param name="target">Target.</param>
-		public CIattachmentPoint CreateAttachmentPointFromGameObject (GameObject target)
+		public CIattachmentPoint CreateAttachmentPointFromGameObject(GameObject target)
 		{
 			return target.AddComponent<CIattachmentPoint>();
 		}
@@ -1947,9 +2020,9 @@ namespace MCS
 		/// <returns>The attachment point on bone.</returns>
 		/// <param name="bone_name">Bone_name.</param>
 		/// <param name="layout">The [Optional] Attachment Point Layout.</param>
-		public CIattachmentPoint CreateAttachmentPointOnBone (string bone_name, APLayout layout = null)
+		public CIattachmentPoint CreateAttachmentPointOnBone(string bone_name, APLayout layout = null)
 		{
-			Transform target_bone = boneService.GetBoneByName (bone_name);
+			Transform target_bone = boneService.GetBoneByName(bone_name);
 			if (bone_name != null) {
 				GameObject new_go = new GameObject ();
 				new_go.name = target_bone.name + "AttachmentPoint";
@@ -1976,7 +2049,7 @@ namespace MCS
 		/// to the attachment point will be garbage collected.
 		/// </summary>
 		/// <param name="name">Name.</param>
-		public void DeleteAttachmentPoint (string name)
+		public void DeleteAttachmentPoint(string name)
 		{
 			CIattachmentPoint point = GetAttachmentPointByName (name);
 			if (point == null)
@@ -2000,10 +2073,10 @@ namespace MCS
 		/// a given character manager.
 		/// </summary>
 		/// <returns>The all attachment points.</returns>
-		public CIattachmentPoint[] GetAllAttachmentPoints ()
+		public CIattachmentPoint[] GetAllAttachmentPoints()
 		{
-			DetectAttachmentPoints ();
-			return attachmentPoints.ToArray ();
+			DetectAttachmentPoints();
+			return attachmentPoints.ToArray();
 		}
 
 
@@ -2013,7 +2086,7 @@ namespace MCS
 		/// </summary>
 		/// <returns>The attachment point by name.</returns>
 		/// <param name="name">Name.</param>
-		public CIattachmentPoint GetAttachmentPointByName (string name)
+		public CIattachmentPoint GetAttachmentPointByName(string name)
 		{
 			foreach(CIattachmentPoint at in attachmentPoints) {
 				if (at.attachmentPointName == name)
@@ -2029,17 +2102,17 @@ namespace MCS
 		/// </summary>
 		/// <param name="propName">Property name.</param>
 		/// <param name="attachmentPointName">Attachment point name.</param>
-		public void AttachPropToAttachmentPoint (string propName, string attachmentPointName)
+		public void AttachPropToAttachmentPoint(string propName, string attachmentPointName)
 		{
-			CIprop prop = GetLoadedPropByName (propName);
+			CIprop prop = GetLoadedPropByName(propName);
 			if (prop == null)
 				return;
 			
-			CIattachmentPoint point = GetAttachmentPointByName (attachmentPointName);
+			CIattachmentPoint point = GetAttachmentPointByName(attachmentPointName);
 			if (point == null)
 				return;
 
-			point.AddProp (prop, true);
+			point.AddProp(prop, true);
 		}
 
 
@@ -2048,17 +2121,17 @@ namespace MCS
 		/// </summary>
 		/// <param name="propName">Property name.</param>
 		/// <param name="attachmentPointName">Attachment point name.</param>
-		public void DetachPropFromAttachmentPoint (string propName, string attachmentPointName)
+		public void DetachPropFromAttachmentPoint(string propName, string attachmentPointName)
 		{
-			CIattachmentPoint point = GetAttachmentPointByName (attachmentPointName);
+			CIattachmentPoint point = GetAttachmentPointByName(attachmentPointName);
 			if (point == null)
 				return;
 			
-			CIprop prop = point.GetPropByName (propName);
+			CIprop prop = point.GetPropByName(propName);
 			if (prop == null)
 				return;
 			
-			point.RemoveProp (prop, true);
+			point.RemoveProp(prop, true);
 		}
 
 
@@ -2070,9 +2143,9 @@ namespace MCS
 		/// </summary>
 		/// <returns>The bone by name.</returns>
 		/// <param name="name">Name.</param>
-		public Transform GetBoneByName (string name)
+		public Transform GetBoneByName(string name)
 		{
-			return boneService.GetBoneByName (name);
+			return boneService.GetBoneByName(name);
 		}
 
 		/// <summary>
@@ -2080,9 +2153,9 @@ namespace MCS
 		/// in the MCS figure's skeleton.
 		/// </summary>
 		/// <returns>The all bones names.</returns>
-		public string[] GetAllBonesNames ()
+		public string[] GetAllBonesNames()
 		{
-			return boneService.getAllBonesNames ();
+			return boneService.getAllBonesNames();
 		}
         
 
@@ -2168,5 +2241,377 @@ namespace MCS
                 ci.RecalculateBounds();
             }
         }
+
+
+        /// <summary>
+        /// Save blendshape data into an XML file for later use
+        /// </summary>
+        /// <param name="location"></param>
+        public void SaveBlendshapeData(string location) {
+
+            Debug.Log("Saving to: " + location);
+
+            //TODO: Allow for canceling the overwrite of files
+
+            //SkinnedMeshRenderer smr = _figureMesh.GetSkinnedMeshRenderer(); //get the skinned mesh renderer for this figure
+            string fHeader = "Blendshape Character Data";               //header will be added to all saved blendshape files
+            List<BlendData> shapes = new List<BlendData>();
+            BlendData bData;
+            XmlSerializer serializer = new XmlSerializer(typeof(List<BlendData>));
+            //int counter = 0;                                            //set our starting counter
+            
+            bData.blendName = fHeader;                                  //make the first
+            bData.check = true;                                         //more for future use, but true means this is a good file
+            bData.blendValue = 0.0f;                                    //making the value nothing since it doesn't matter
+            shapes.Add(bData);
+            //counter++; 
+
+            for (int i = 0; i < coreMorphs.morphs.Count; i++) {
+
+                //check to see if morph has been adjusted
+                if ((coreMorphs.morphs[i].attached) || (coreMorphs.morphs[i].localName.Contains("eCTRL"))) {
+
+                    bData.blendName = coreMorphs.morphs[i].localName;
+                    bData.check = false;
+                    bData.blendValue = coreMorphs.morphs[i].value;
+                    shapes.Add(bData);
+                    //counter++;
+
+                }
+
+            }
+
+            FileStream stream = new FileStream(location, FileMode.Create);
+            serializer.Serialize(stream, shapes);
+            stream.Close();
+
+            Debug.Log("Blendshape data file saved.");
+
+            //smr.b
+        }
+
+        /// <summary>
+        /// Loads blendshapes from a file and applies them to the model.
+        /// </summary>
+        /// <param name="location"></param>
+        public void LoadBlendshapeData(string location) {
+
+            Debug.Log("Loading file from: " + location);
+            XmlSerializer serializer = new XmlSerializer(typeof(List<BlendData>));  //set up our serializer
+            FileStream stream = new FileStream(location, FileMode.Open);    //set up our data stream for loading the file
+            List<BlendData> shapes = new List<BlendData>();                 //create the holder of our data
+            shapes = serializer.Deserialize(stream) as List<BlendData>;     //load our data into the list
+
+            //verify this data is correct
+            if ((shapes[0].blendName != "Blendshape Character Data") && !(shapes[0].check)) {
+
+                Debug.Log("Unable to load file.  Data is corrupt or saved improperly.");
+                return;
+
+            }
+
+            //everything looks good so lets update the blendshapes
+            for (int i = 1; i < shapes.Count; i++) {
+
+                SetBlendshapeValue(shapes[i].blendName, shapes[i].blendValue);
+
+            }
+
+            stream.Close();
+            Debug.Log("Blendshapes loaded and set properly.");
+
+        }
+
+
+        public void UpdateJCTMorphs() {
+
+            XmlSerializer serializer = new XmlSerializer(typeof(JCTMorphTrans[]));
+            JCTTransition jTransition = GetComponentInChildren<JCTTransition>();        //get the CoreMesh script
+            JCTMorphTrans[] file = new JCTMorphTrans[jTransition.m_morphs.Length];
+            String fileLoc;                                             //temp string for file location
+
+            //no need to update again once the transition has been updated once
+            if (jTransition.jctUpdateFlag)
+                return;
+
+            //check to see if we're dealing with a male of female model
+            if (_figureMesh.dazName == "MCSFemale")
+                fileLoc = "/MCS/Code/Plugins/MCSFemale2017.core";
+            else
+                fileLoc = "/MCS/Code/Plugins/MCSMale2017.core";
+
+            FileStream stream = new FileStream(Application.dataPath + fileLoc, FileMode.Open);
+            file = serializer.Deserialize(stream) as JCTMorphTrans[];
+            stream.Close();
+
+            //gotta put the data back into the JCTTransition
+            for (int i = 0; i < jTransition.m_morphs.Length; i++) {
+
+                jTransition.m_morphs[i].m_name = file[i].m_name;        //store the name of the morph
+                jTransition.m_morphs[i].m_value = file[i].m_value;      //store the value
+                jTransition.m_morphs[i].m_target = file[i].m_target;    //store the target
+                jTransition.m_morphs[i].m_nodes = file[i].m_nodes;      //copy over the nodes value
+                jTransition.m_morphs[i].m_offsets = file[i].m_offsets;  //copy over the offset data
+
+            }
+
+            jTransition.jctUpdateFlag = true;                           //make a note that we updated the JCT stuff
+            EditorUtility.SetDirty(this);                               //set it up so that everything is updated properly and saved
+
+
+        }
+
+                                                                        //indent marker
+        public void ExportJCTMorphs() {
+
+            XmlSerializer serializer = new XmlSerializer(typeof(JCTMorphTrans[]));
+            JCTTransition jTransition = GetComponentInChildren<JCTTransition>();        //get the CoreMesh script
+            JCTMorphTrans[] file = new JCTMorphTrans[jTransition.m_morphs.Length];
+
+            //need to fix the texture constructor issue
+            for (int i = 0; i < jTransition.m_morphs.Length; i++) {
+
+                file[i].m_name = jTransition.m_morphs[i].m_name;
+                file[i].m_value = jTransition.m_morphs[i].m_value;
+                file[i].m_target = jTransition.m_morphs[i].m_target;
+                file[i].m_nodes = jTransition.m_morphs[i].m_nodes;
+                file[i].m_offsets = jTransition.m_morphs[i].m_offsets;
+
+                if (jTransition.m_morphs[i].m_image != null)
+                    file[i].m_image_loc = jTransition.m_morphs[i].m_image.name;
+                else
+                    file[i].m_image_loc = "";
+
+            }
+
+            String fileLoc;                                             //temp variable for file location
+
+            //verify if this is a female or male model
+            if (_figureMesh.dazName == "MCSFemale")
+                fileLoc = "/MCS/Code/Plugins/MCSFemale2017.core";
+            else
+                fileLoc = "/MCS/Code/Plugins/MCSMale2017.core";
+
+            FileStream stream = new FileStream(Application.dataPath + fileLoc, FileMode.Create);
+            serializer.Serialize(stream, file);
+            stream.Close();
+
+        }
+
+        /// <summary>
+        /// Get the vertex data and put it into an XML file.  Requires the file location
+        /// of the streamed assets file.
+        /// </summary>
+        /// <param name="file"></param>
+        public void ExportVertexData(List<CoreMesh> myMeshes) {
+
+            //check to see if this is the male model
+            //if (_figureMesh.dazName == "MCSMale")
+            //    file = "MCSMale/MCSMale/MCSMale_LOD0";
+            
+            foreach (CoreMesh cm in myMeshes) {
+
+                Vector3[] verts;
+                SkinnedMeshRenderer smr = cm.skinnedMeshRenderer;       //get the skinned mesh renderer for this object
+                XmlSerializer serializer = new XmlSerializer(typeof(Vector3[]));
+                
+                //Debug.Log("Morph Path: " + cm.runtimeMorphPath);
+                //Debug.Log("Streaming Assets: " + streamBase);
+                //Debug.Log("Loc: " + Application.dataPath + streamBase + cm.runtimeMorphPath + ".covx");
+                FileStream stream = new FileStream(Application.dataPath + streamBase + cm.runtimeMorphPath + ".covx", FileMode.Create);
+               
+                verts = smr.sharedMesh.vertices;                        //save the vertices for this mesh
+                serializer.Serialize(stream, verts);                    //save the verts
+                stream.Close();                                         //vertices extracted
+                
+                Debug.Log("Extracted: " + cm.runtimeMorphPath + " ::");
+
+            }
+
+
+            Debug.Log("Extraction complete.");
+
+        }
+
+        /// <summary>
+        /// Used for converting vertices for meshes when using Unity 2018 and newer.  The basis of 
+        /// this conversion was done by @ru_erikvdb.  He deserves credit for doing a lot of the
+        /// leg work.
+        /// </summary>
+        /// <param name="myMeshes"></param>
+        public void ConvertVertexData(List<CoreMesh> myMeshes) {
+
+            Debug.Log("Converting model using 2017 vertices....");
+            int mCounter = 0;                                           //counter for how many meshes in this set has been updated
+
+            //seems redundant, but to avoid excessive loading, we're gonna check fies before we load in asset paths
+            //checking before we do anything serious will cut down on loading and beach ball time
+            foreach (CoreMesh cm in myMeshes) {
+
+                string file = Application.dataPath + streamBase + cm.runtimeMorphPath + ".covx";    //build the location for the .covx
+
+                //we need to see if even one of the meshes in this set hasn't been updated
+                if (!File.Exists(file))
+                    break;                                              //get out of this loop because one of the files hasn't been updated
+                else if (File.ReadAllText(file).Contains("!--Unity 2018+ Compatible--!"))
+                     mCounter++;
+
+            }
+
+            //see if all of the meshes have been updated
+            if (mCounter == myMeshes.Count)
+                return;
+
+            ProjectionMeshMap pmm = new ProjectionMeshMap();
+            StreamingMorphs sm = new StreamingMorphs();
+            StreamingMorphs.LoadMainThreadAssetPaths();
+            XmlSerializer serializer = new XmlSerializer(typeof(Vector3[]));    //set up our serializer so that we can read the vertex files
+
+            var manifest = sm.GetManifest(name);
+
+            Debug.Log("Looking over core meshes....");
+            //cycle through all of the CoreMeshes on this model
+            foreach (CoreMesh cm in myMeshes) {
+
+                Vector3[] verts;                                        //varible to hold our vertices loaded from the file
+                SkinnedMeshRenderer smr = cm.skinnedMeshRenderer;       //get the skinned mesh renderer for this object
+                string file = Application.dataPath + streamBase + cm.runtimeMorphPath + ".covx";    //set up the string for the file to grab
+                string streamFile = Path.Combine(Application.streamingAssetsPath, cm.runtimeMorphPath);  //get the morph streaming assets location
+                string tempFile = Application.temporaryCachePath + "/temp"; //temp location for storing files
+
+                //check to see if this file exists
+                if (!File.Exists(file)) {
+
+                    Debug.Log("The vertex file for " + cm.name + " doesn't exist at location " + file + ".");
+                    continue;
+
+                }
+
+                //need to find out if this model has been updated yet
+                if (File.ReadAllText(file).Contains("!--Unity 2018+ Compatible--!")) {
+                    
+                    Debug.Log("This mesh (" + smr.name + ") has already been updated.");   //make a note in the Editor that this mesh has been updated already
+                    continue;
+
+                }
+
+                Debug.Log("We're continuing now.");
+
+                FileStream stream = new FileStream(file, FileMode.Open);    //set up our file stream to grab the data
+                verts = serializer.Deserialize(stream) as Vector3[];        //grab our verts
+                stream.Close();                                             //close stream (don't forgot to do this)
+
+                //string morphPath = Application.temporaryCachePath + "/temp";    //make a temporary folder for putting files
+                Directory.CreateDirectory(tempFile);                        //create the temporary directory for storing morph files
+
+                Dictionary<int, int> tsm = pmm.GenerateTargetToSourceMap(verts, smr.sharedMesh.vertices);   //want to compare verts between the older verts and the
+                                                                            //current verts on the mesh
+
+                //Process morphs now
+                //int count = 0;
+                //int total = manifest.names.Length;                          //get number of items in the array
+                List<string> morphNames = new List<string>(manifest.names); //make new list to hold list of morph names will allow for reordering and the like
+                morphNames.Add("base");                                     //needed for clothing and hair morphs and how they connect to JCT lists
+
+                Debug.Log("Starting to compare morphs....");
+
+                //now we need to look over each morph and compare
+                foreach (string mName in morphNames) {
+
+                    MorphData sourceMD = sm.GetMorphDataFromResources(streamFile, mName);   //get the data for the selected morph from the streaming assets file
+
+                    //see if the morph data is actually there
+                    if (sourceMD != null) {
+
+                        MorphData targetMD = RemapMorphData(smr, sourceMD, tsm);    //reorder verts to match old versions of Unity
+                        MCS_Utilities.MorphExtraction.MorphExtraction.WriteMorphDataToFile(targetMD, tempFile + "/" + targetMD.name + ".morph", false, false);
+
+                    }
+                    
+                }
+
+                File.AppendAllText(file, "!--Unity 2018+ Compatible--!");   //add this when needed to signal this file has been converted
+
+                //generate .morphs.mr file again
+                string tmpFile = tempFile.Replace(@"\", @"/");
+                string newFile = streamFile + ".morphs.mr";                   //append morph.mr to name to make the correct .mr file
+                MCS_Utilities.MorphExtraction.MorphExtraction.MergeMorphsIntoMR(tmpFile, newFile);
+
+                //We're done!!
+                MCS_Utilities.Paths.TryDirectoryDelete(tempFile);           //delete the directory we were using to build morphs
+
+            }
+
+            Debug.Log("Conversion complete.");
+            Debug.LogWarning("Please RESTART Unity for changes to take effect.");
+
+        }
+
+
+        /// <summary>
+        /// Remaps the morph data and is taken from MCS SteamingMorphs built-in ConvertMorphDataFromMap,
+        /// but without the requirement for a projectionmap.  This function was contributed by
+        /// @ru_erikvdb.
+        /// </summary>
+        /// <param name="smr"></param>
+        /// <param name="morphData"></param>
+        /// <param name="tsMap"></param>
+        /// <returns></returns>
+        MorphData RemapMorphData(SkinnedMeshRenderer smr, MorphData morphData, Dictionary<int, int> tsMap) {
+
+            Mesh mesh = smr.sharedMesh;
+            Vector3[] targetVertices = mesh.vertices;
+
+            MorphData morphDataNew = new MorphData();
+            morphDataNew.name = morphData.name;
+            morphDataNew.jctData = morphData.jctData;
+            morphDataNew.blendshapeData = new BlendshapeData();
+            morphDataNew.blendshapeData.frameIndex = morphData.blendshapeData.frameIndex;
+            morphDataNew.blendshapeData.shapeIndex = morphData.blendshapeData.shapeIndex;
+
+            morphDataNew.blendshapeData.deltaVertices = new Vector3[targetVertices.Length];
+            morphDataNew.blendshapeData.deltaNormals = new Vector3[targetVertices.Length];
+            morphDataNew.blendshapeData.deltaTangents = new Vector3[targetVertices.Length];
+            
+            foreach (var ts in tsMap) {
+                if (morphData.blendshapeData.deltaNormals != null) {
+                    morphDataNew.blendshapeData.deltaNormals[ts.Key] = morphData.blendshapeData.deltaNormals[ts.Value];
+                }
+                if (morphData.blendshapeData.deltaVertices != null) {
+                    if (ts.Key >= morphDataNew.blendshapeData.deltaVertices.Length) {
+                        throw new System.Exception("ts.key in: " + smr.name + " is too large for deltas: " + ts.Key + " => " + ts.Value + " | " + morphDataNew.blendshapeData.deltaVertices.Length);
+                    }
+                    if (ts.Value >= morphData.blendshapeData.deltaVertices.Length) {
+                        throw new System.Exception("ts.value in: " + smr.name + " is too large for deltas: " + ts.Key + " => " + ts.Value + " | " + morphData.blendshapeData.deltaVertices.Length);
+                    }
+                    morphDataNew.blendshapeData.deltaVertices[ts.Key] = morphData.blendshapeData.deltaVertices[ts.Value];
+                }
+                if (morphData.blendshapeData.deltaTangents != null) {
+                    morphDataNew.blendshapeData.deltaTangents[ts.Key] = morphData.blendshapeData.deltaTangents[ts.Value];
+                }
+            }
+
+            return morphDataNew;
+           
+        }
+
+
+        /// <summary>
+        /// Used when a model is first drug into the scene to check if the vertex order has been
+        /// udated to Unity 2017 and earlier.  Only used for the base male/female models.
+        /// </summary>
+        public void ConvertMyself() {
+
+            if ((!saDone) && (!Application.isPlaying)) {
+
+                //Debug.Log("I'm gonna convert myself now.");
+                ConvertVertexData(_figureMesh.LODlist);
+                saDone = true;
+                EditorUtility.SetDirty(this);
+
+            }
+
+        }
+        
     }
 }

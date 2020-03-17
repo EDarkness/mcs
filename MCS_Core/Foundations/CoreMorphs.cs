@@ -372,7 +372,8 @@ namespace MCS.FOUNDATIONS
                 return;
             }
             string[] morphNames = new string[morphs.Length];
-            for(int i = 0; i < morphs.Length; i++)
+
+            for (int i = 0; i < morphs.Length; i++)
             {
                 Morph m = morphs[i];
                 morphNames[i] = m.localName;
@@ -838,6 +839,20 @@ namespace MCS.FOUNDATIONS
         public float localZ;
         */
     }
+
+    /// <summary>
+    /// Inormation stored about a blendshape.  Used for saving data.
+    /// </summary>
+    [System.Serializable]
+    public struct BlendData {
+
+        public string blendName;
+        public bool check;
+        public float blendValue;
+
+    }
+
+    
 
 #endregion
 }
