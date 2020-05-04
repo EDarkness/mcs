@@ -43,7 +43,7 @@ namespace MCS
 		public static float Version = 1.9f;                             //version number variables
         public static int Major = 1;
         public static int Minor = 9;
-		public static int Revision = 1;
+		public static int Revision = 2;
                                                                         //indent marker******
         public bool autoUpdateModel = true;                             //this flag will set the model to automatically update itself every frame
                                                                         //and is set to do so when model is created.  Can be changed to manual by
@@ -1382,13 +1382,6 @@ namespace MCS
 
 			foreach (CIclothing cloth in content_pack.availableClothing) {
 
-        #if UNITY_2018_4_OR_NEWER
-
-                if (!Application.isPlaying)
-                    ConvertVertexData(cloth.LODlist);
-
-        #endif
-
 				GameObject cloth_clone = LoadClothingFromContentPackToFigure (cloth);
 
                 if (boneService.IsBodyObject (cloth_clone.transform.parent.gameObject))
@@ -1399,13 +1392,6 @@ namespace MCS
             }
 			
 			foreach (CIhair hair in content_pack.availableHair) {
-
-        #if UNITY_2018_4_OR_NEWER
-
-                if (!Application.isPlaying)
-                    ConvertVertexData(hair.LODlist);
-
-        #endif
 
 				GameObject hair_clone = LoadHairFromContentPackToFigure (hair);
 			
@@ -2298,7 +2284,7 @@ namespace MCS
 
             Debug.Log("Loading file from: " + location);
             XmlSerializer serializer = new XmlSerializer(typeof(List<BlendData>));  //set up our serializer
-            FileStream stream = new FileStream(location, FileMode.Open);    //set up our data stream for loading the file
+            FileStream stream = new FileStream(location, FileMode.Open, FileAccess.Read);    //set up our data stream for loading the file
             List<BlendData> shapes = new List<BlendData>();                 //create the holder of our data
             shapes = serializer.Deserialize(stream) as List<BlendData>;     //load our data into the list
 
@@ -2340,7 +2326,7 @@ namespace MCS
             else
                 fileLoc = "/MCS/Code/Plugins/MCSMale2017.core";
 
-            FileStream stream = new FileStream(Application.dataPath + fileLoc, FileMode.Open);
+            FileStream stream = new FileStream(Application.dataPath + fileLoc, FileMode.Open, FileAccess.Read);
             file = serializer.Deserialize(stream) as JCTMorphTrans[];
             stream.Close();
 
@@ -2497,7 +2483,7 @@ namespace MCS
 
                 Debug.Log("We're continuing now.");
 
-                FileStream stream = new FileStream(file, FileMode.Open);    //set up our file stream to grab the data
+                FileStream stream = new FileStream(file, FileMode.Open, FileAccess.Read);    //set up our file stream to grab the data
                 verts = serializer.Deserialize(stream) as Vector3[];        //grab our verts
                 stream.Close();                                             //close stream (don't forgot to do this)
 
@@ -2593,24 +2579,6 @@ namespace MCS
 
             return morphDataNew;
            
-        }
-
-
-        /// <summary>
-        /// Used when a model is first drug into the scene to check if the vertex order has been
-        /// udated to Unity 2017 and earlier.  Only used for the base male/female models.
-        /// </summary>
-        public void ConvertMyself() {
-
-            if ((!saDone) && (!Application.isPlaying)) {
-
-                //Debug.Log("I'm gonna convert myself now.");
-                ConvertVertexData(_figureMesh.LODlist);
-                saDone = true;
-                EditorUtility.SetDirty(this);
-
-            }
-
         }
         
     }
