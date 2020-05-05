@@ -23,6 +23,18 @@ namespace MCS.EDITORS
         public bool dirtyAttached;
     }
 
+    [InitializeOnLoad]
+    public class StartEditor {
+
+        static void Start() {
+
+            Debug.Log("Something is happening here.");
+        }
+
+    }
+
+
+
     [CustomEditor (typeof(MCSCharacterManager))]
 	public class MCSCharacterManagerEditor : Editor
 	{
@@ -48,10 +60,14 @@ namespace MCS.EDITORS
 		protected bool showHair = false;
         protected bool showAdvanced = false;
 
+        protected bool testBool = false;
+
+        protected string saveLoc = "";
+
         public override void OnInspectorGUI()
 		{
 			#region just_stuff
-			serializedObject.Update ();
+			serializedObject.Update();
 			if(charMan == null)
 				charMan = (MCSCharacterManager)target;
 
@@ -65,6 +81,17 @@ namespace MCS.EDITORS
             GUIStyle mcsDefaultButtonStyle = new GUIStyle(GUI.skin.button);
             mcsDefaultButtonStyle.margin = new RectOffset(10,10,5,5);
             mcsDefaultButtonStyle.padding = new RectOffset(5, 5, 5, 5);
+
+            #if UNITY_EDITOR
+            if (!charMan.testBool && !Application.isPlaying) {
+
+                Debug.Log("First time through. Model: " + charMan.gameObject.name);
+                charMan.SetDefaultBlendshapes();
+                charMan.testBool = true;
+                EditorUtility.SetDirty(charMan);
+
+            }
+            #endif
 
 			#endregion just_stuff
 
@@ -581,6 +608,80 @@ namespace MCS.EDITORS
 
                 }
                 EditorGUILayout.EndHorizontal();
+                                                                        //indent marker
+
+
+        #if !(UNITY_2018_1_OR_NEWER)
+                //Will only do something if using Unity 2017 or earlier
+
+                if(GUILayout.Button("Export JCT Morphs", mcsDefaultButtonStyle))
+                {
+                    //charMan.RemoveRogueContent();
+                    
+                    charMan.ExportJCTMorphs();                          //export the Stream Assets of this model if it's Unity 2017
+
+                }
+                EditorGUILayout.Space();
+
+                EditorGUILayout.HelpBox("Export mesh vertices into the Streaming Assets folder where the model's morphs are stored.  Simply drag the costume item into the box and press the export button.", MessageType.Info);
+                charMan.costume = (CostumeItem) EditorGUILayout.ObjectField("MCS Costume CoreMesh: ", charMan.costume , typeof(CostumeItem), true);
+
+                if(GUILayout.Button("Export Streaming Assets", mcsDefaultButtonStyle))
+                {
+                    //check which items need to be extracted skip blank spaces
+                    if (charMan.costume != null)
+                        charMan.ExportVertexData(charMan.costume.LODlist);     //export the Stream Assets of this model if it's Unity 2017
+
+                    charMan.costume = null;                             //clear out the data
+
+                }
+
+        #endif
+
+                EditorGUILayout.Space();
+                EditorGUILayout.Space();
+                
+                EditorGUILayout.HelpBox("Save/Load your blendshape data for future use. Call LoadBlendshapeData(loc) or SaveBlendshapeData(loc) to save/load in your game.", MessageType.Info);
+
+                if(GUILayout.Button("Save Blendshape Data", mcsDefaultButtonStyle)) {
+
+                    saveLoc = EditorUtility.SaveFilePanel("Save Blendshape Data", Application.dataPath, "MyBlendshape", "xbd");
+
+                    if (saveLoc.Length != 0)
+                        charMan.SaveBlendshapeData(saveLoc);
+
+                }
+
+                if(GUILayout.Button("Load Blendshape Data", mcsDefaultButtonStyle)) {
+
+                    saveLoc = EditorUtility.OpenFilePanel("Load Blendshape Data", Application.dataPath, "xbd");
+
+                    if (saveLoc.Length != 0)
+                        charMan.LoadBlendshapeData(saveLoc);
+
+                }
+
+        //Allows Unity 2018.4 or newer users to convert their own meshes
+        #if UNITY_2018_4_OR_NEWER
+
+                EditorGUILayout.Space();
+                EditorGUILayout.Space();
+
+                EditorGUILayout.HelpBox("Covert vertices to the proper order based on Unity 2017.  Remember that you only need to do the conversion once per item.  Once the conversion is done, you can delete the .covx files.  Remember to restart Unity for the changes to take effect.", MessageType.Info);
+
+                charMan.costume = (CostumeItem) EditorGUILayout.ObjectField("MCS Costume CoreMesh: ", charMan.costume , typeof(CostumeItem), true);
+                
+                if(GUILayout.Button("Convert Vertex Data", mcsDefaultButtonStyle)) {
+
+                    //check to see if costume is empty
+                    if (charMan.costume != null)
+                        charMan.ConvertVertexData(charMan.costume.LODlist); //attempt to convert vertices
+
+                    charMan.costume = null;                                 //empty the field once we're done
+
+                }
+
+        #endif
 
                 //We're not quite ready to support this w/o having documentation about it
                 /*
